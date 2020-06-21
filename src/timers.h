@@ -17,6 +17,8 @@ enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER, ARP
 
 void timer_start(const int i);
 double timer_elapsed_msec(const int i);
+unsigned long timer_elapsed_usec(const int i);
+unsigned long long timer_elapsed_nsec(const int i);
 void sleepms(const int milliseconds);
 
 #endif //TIMERS_H

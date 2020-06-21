@@ -15,9 +15,11 @@
 
 extern const char *regextype[];
 
-int match_regex(const char *input, const int clientID, const unsigned char regexid);
+int match_regex(const char *input, const int clientID, const unsigned char regexid, void *match_params);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
+
+int regex_speedtest(void);
 
 // Blocking status constants used by the domain->clientstatus vector
 // We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
