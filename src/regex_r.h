@@ -19,7 +19,7 @@ int match_regex(const char *input, const int clientID, const enum regex_type, co
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
 
-int regex_test(const bool debug_mode, const char *domainin, const char *regexin);
+int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin);
 
 // Blocking status constants used by the domain->clientstatus vector
 // We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
