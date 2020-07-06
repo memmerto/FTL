@@ -1361,6 +1361,9 @@ void getDomainDetails(const char *client_message, const int *sock)
 					case REGEX_BLOCKED:
 						str = "regex";
 						break;
+					case WHITELISTED:
+						str = "whitelisted";
+						break;
 					case NOT_BLOCKED:
 						str = "not blocked";
 						break;

@@ -13,6 +13,11 @@
 // Definition of sqlite3_stmt
 #include "database/sqlite3.h"
 
+// Blocking status constants used by the domain->clientstatus vector
+// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
+// default value set initially with calloc
+enum blocking_status { UNKNOWN_BLOCKED = 0u, GRAVITY_BLOCKED, BLACKLIST_BLOCKED, REGEX_BLOCKED, WHITELISTED, NOT_BLOCKED } __attribute__ ((packed));
+
 void strtolower(char *str);
 int findUpstreamID(const char * upstream, const bool count);
 int findDomainID(const char *domain, const bool count);
@@ -76,7 +81,7 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
-	unsigned char blocking_status;
+	enum blocking_status blocking_status;
 	unsigned char force_reply;
 	int domainID;
 	int clientID;
