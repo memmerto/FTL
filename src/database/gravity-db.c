@@ -21,6 +21,8 @@
 #include "../vector.h"
 // log_subnet_warning()
 #include "database/message-table.h"
+// struct DNSCacheData
+#include "../datastructure.h"
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -781,7 +783,7 @@ static bool domain_in_list(const char *domain, sqlite3_stmt* stmt, const char* l
 	return (result == 1);
 }
 
-bool in_whitelist(const char *domain, const int clientID, clientsData* client)
+bool in_whitelist(const char *domain, const DNSCacheData *dns_cache, const int clientID, clientsData* client)
 {
 	// First check if FTL forked to handle TCP connections
 	gravityDB_check_fork();
@@ -815,7 +817,7 @@ bool in_whitelist(const char *domain, const int clientID, clientsData* client)
 	// optimization as the database lookup will most likely hit (a) more domains and (b)
 	// will be faster (given a sufficiently large number of regex whitelisting filters).
 	return domain_in_list(domain, stmt, "whitelist") ||
-	       match_regex(domain, clientID, REGEX_WHITELIST, false) != -1;
+	       match_regex(domain, dns_cache, clientID, REGEX_WHITELIST, false) != -1;
 }
 
 bool in_gravity(const char *domain, const int clientID, clientsData* client)
@@ -892,7 +894,7 @@ bool in_auditlist(const char *domain)
 	return domain_in_list(domain, auditlist_stmt, "auditlist");
 }
 
-bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const struct regex_data *regex,
+bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int numregex, const regex_data *regex,
                                        const unsigned char type, const char* table, const int clientID)
 {
 	// First check if FTL forked to handle TCP connections
@@ -926,6 +928,8 @@ bool gravityDB_get_regex_client_groups(clientsData* client, const unsigned int n
 	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
 	{
 		const int result = sqlite3_column_int(query_stmt, 0);
+		if(config.debug & DEBUG_REGEX)
+			logg("   %i", result);
 		for(unsigned int regexID = 0; regexID < numregex; regexID++)
 		{
 			if(regex[regexID].database_id == result)

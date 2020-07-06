@@ -96,7 +96,7 @@ static bool check_domain_blocked(const char *domainString, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domainString, clientID, REGEX_BLACKLIST, false)) > -1)
+	   (regex_idx = match_regex(domainString, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -126,7 +126,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	queriesData* query  = getQuery(queryID,   true);
 	domainsData* domain = getDomain(domainID, true);
 	clientsData* client = getClient(clientID, true);
-	unsigned int cacheID = findCacheID(domainID, clientID);
+	unsigned int cacheID = findCacheID(domainID, clientID, query->type);
 	DNSCacheData *dns_cache = getDNSCache(cacheID, true);
 	if(query == NULL || domain == NULL || client == NULL || dns_cache == NULL)
 	{
@@ -250,7 +250,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	// Check whitelist (exact + regex) for match
 	const char *domainString = getstr(domain->domainpos);
 	const char *blockedDomain = domainString;
-	query->whitelisted = in_whitelist(domainString, clientID, client);
+	query->whitelisted = in_whitelist(domainString, dns_cache, clientID, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -381,8 +381,8 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			unsigned int parent_cacheID = findCacheID(domainID, query->clientID);
-			unsigned int child_cacheID = findCacheID(query->domainID, query->clientID);
+			unsigned int parent_cacheID = findCacheID(domainID, query->clientID, query->type);
+			unsigned int child_cacheID = findCacheID(query->domainID, query->clientID, query->type);
 
 			// Get cache pointers
 			DNSCacheData *parent_dns_cache = getDNSCache(parent_cacheID, true);
