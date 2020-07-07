@@ -29,6 +29,7 @@ typedef struct regex_data {
 	char *string;
 	int database_id;
 	bool available;
+	bool inverted;
 	enum query_type query_type;
 } regex_data;
 
