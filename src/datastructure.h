@@ -25,7 +25,7 @@ const char *querytypes[TYPE_MAX];
 typedef struct {
 	unsigned char magic;
 	unsigned char status;
-	unsigned char type;
+	enum query_type type;
 	unsigned char privacylevel;
 	unsigned char reply;
 	unsigned char dnssec;
