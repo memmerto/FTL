@@ -19,7 +19,7 @@
 enum blocking_status { UNKNOWN_BLOCKED = 0u, GRAVITY_BLOCKED, BLACKLIST_BLOCKED, REGEX_BLOCKED, WHITELISTED, NOT_BLOCKED } __attribute__ ((packed));
 
 enum query_type { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_NAPTR,
-       TYPE_MX, TYPE_DS, TYPE_RRSIG, TYPE_DNSKEY, TYPE_NS, TYPE_OTHER, TYPE_MAX } __attribute__ ((packed));
+                  TYPE_MX, TYPE_DS, TYPE_RRSIG, TYPE_DNSKEY, TYPE_NS, TYPE_OTHER, TYPE_MAX } __attribute__ ((packed));
 const char *querytypes[TYPE_MAX];
 
 typedef struct {
