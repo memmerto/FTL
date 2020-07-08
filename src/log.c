@@ -125,7 +125,9 @@ void __attribute__ ((format (gnu_printf, 1, 2))) logg(const char *format, ...)
 	// Print to stdout before writing to file
 	if((!daemonmode || cli_mode) && print_stdout)
 	{
-		printf("[%s %s] ", timestring, idstr);
+		// Only print time/ID string when not in direct user interaction (CLI mode)
+		if(!cli_mode)
+			printf("[%s %s] ", timestring, idstr);
 		va_start(args, format);
 		vprintf(format, args);
 		va_end(args);
