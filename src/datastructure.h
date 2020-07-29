@@ -13,22 +13,16 @@
 // Definition of sqlite3_stmt
 #include "database/sqlite3.h"
 
-// Blocking status constants used by the domain->clientstatus vector
-// We explicitly force UNKNOWN_BLOCKED to zero on all platforms as this is the
-// default value set initially with calloc
-enum blocking_status { UNKNOWN_BLOCKED = 0u, GRAVITY_BLOCKED, BLACKLIST_BLOCKED, REGEX_BLOCKED, WHITELISTED, NOT_BLOCKED } __attribute__ ((packed));
-
-enum query_type { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_NAPTR,
-                  TYPE_MX, TYPE_DS, TYPE_RRSIG, TYPE_DNSKEY, TYPE_NS, TYPE_OTHER, TYPE_MAX } __attribute__ ((packed));
-const char *querytypes[TYPE_MAX];
+// enum privacy_level
+#include "enums.h"
 
 typedef struct {
 	unsigned char magic;
-	unsigned char status;
-	enum query_type type;
-	unsigned char privacylevel;
-	unsigned char reply;
-	unsigned char dnssec;
+	enum query_status status;
+	enum query_types type;
+	enum privacy_level privacylevel;
+	enum reply_type reply;
+	enum dnssec_status dnssec;
 	time_t timestamp;
 	int domainID;
 	int clientID;
@@ -74,19 +68,21 @@ typedef struct {
 
 typedef struct {
 	unsigned char magic;
+	enum domain_client_status blocking_status;
 	unsigned char force_reply;
-	enum blocking_status blocking_status;
-	enum query_type query_type;
+	enum query_types query_type;
 	int domainID;
 	int clientID;
 	int black_regex_idx;
 } DNSCacheData;
 
+extern const char *querytypes[TYPE_MAX];
+
 void strtolower(char *str);
 int findUpstreamID(const char * upstream, const bool count);
 int findDomainID(const char *domain, const bool count);
 int findClientID(const char *client, const bool count);
-int findCacheID(int domainID, int clientID, enum query_type query_type);
+int findCacheID(int domainID, int clientID, enum query_types query_type);
 bool isValidIPv4(const char *addr);
 bool isValidIPv6(const char *addr);
 

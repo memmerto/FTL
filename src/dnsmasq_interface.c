@@ -12,6 +12,7 @@
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 #include "FTL.h"
+#include "enums.h"
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
@@ -37,6 +38,8 @@
 #include "args.h"
 // handle_realtime_signals()
 #include "signals.h"
+// atomic_flag_test_and_set()
+#include <stdatomic.h>
 
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
@@ -60,14 +63,14 @@ char debug_dnsmasq_lines = 0;
 unsigned char* pihole_privacylevel = &config.privacylevel;
 const char flagnames[][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA ", "F_SERVFAIL", "F_RCODE"};
 
-static bool check_domain_blocked(const char *domainString, const int clientID,
+static bool check_domain_blocked(const char *domain, const int clientID,
                                  clientsData *client, queriesData *query, DNSCacheData *dns_cache,
                                  const char **blockingreason, unsigned char *new_status)
 {
 	// Check domains against exact blacklist
 	// Skipped when the domain is whitelisted
 	bool blockDomain = false;
-	if(in_blacklist(domainString, clientID, client))
+	if(in_blacklist(domain, clientID, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -82,7 +85,7 @@ static bool check_domain_blocked(const char *domainString, const int clientID,
 	// Check domains against gravity domains
 	// Skipped when the domain is whitelisted or blocked by exact blacklist
 	if(!query->whitelisted && !blockDomain &&
-	   in_gravity(domainString, clientID, client))
+	   in_gravity(domain, clientID, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -98,7 +101,7 @@ static bool check_domain_blocked(const char *domainString, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domainString, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
+	   (regex_idx = match_regex(domain, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -163,7 +166,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 			}
 
 			// Do not block if the entire query is to be permitted
-			// as sometving along the CNAME path hit the whitelist
+			// as something along the CNAME path hit the whitelist
 			if(!query->whitelisted)
 			{
 				query_blocked(query, domain, client, QUERY_BLACKLIST);
@@ -250,27 +253,27 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	}
 
 	// Check whitelist (exact + regex) for match
-	const char *domainString = getstr(domain->domainpos);
-	const char *blockedDomain = domainString;
-	query->whitelisted = in_whitelist(domainString, dns_cache, clientID, client);
+	const char *blockedDomain = domainstr;
+	query->whitelisted = in_whitelist(domainstr, dns_cache, clientID, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
+
 	// Check blacklist (exact + regex) and gravity for queried domain
 	if(!query->whitelisted)
 	{
-	    blockDomain = check_domain_blocked(domainString, clientID, client, query, dns_cache, blockingreason, &new_status);
+		blockDomain = check_domain_blocked(domainstr, clientID, client, query, dns_cache, blockingreason, &new_status);
 	}
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled (defaulting to true)
-	if(config.block_esni && !query->whitelisted && !blockDomain && strncasecmp(domainString, "_esni.", 6u) == 0)
+	if(config.block_esni && !query->whitelisted && !blockDomain && strncasecmp(domainstr, "_esni.", 6u) == 0)
 	{
-		blockDomain = check_domain_blocked(domainString + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
+		blockDomain = check_domain_blocked(domainstr + 6u, clientID, client, query, dns_cache, blockingreason, &new_status);
 
 		if(blockDomain)
 		{
 			// Truncate "_esni." from queried domain if the parenting domain was the reason for blocking this query
-			blockedDomain = domainString + 6u;
+			blockedDomain = domainstr + 6u;
 			// Force next DNS reply to be NXDOMAIN for _esni.* queries
 			force_next_DNS_reply = NXDOMAIN;
 			dns_cache->force_reply = NXDOMAIN;
@@ -285,7 +288,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 		// Debug output
 		if(config.debug & DEBUG_QUERIES)
-			logg("Blocking %s as %s is %s", domainString, blockedDomain, *blockingreason);
+			logg("Blocking %s as %s is %s", domainstr, blockedDomain, *blockingreason);
 	}
 	else
 	{
@@ -302,10 +305,6 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 
 bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const char* file, const int line)
 {
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return false;
-
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.cname_inspection)
 	{
@@ -339,35 +338,40 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		return false;
 	}
 
-	// Go through already knows domains and see if it is one of them
-	// As this domain might have been found in the middle of a CNAME-path,
-	// it may be not have been seen by FTL_new_query() before
-	char *domainString = strdup(domain);
-	strtolower(domainString);
-	const int domainID = findDomainID(domainString, false);
+	// Example to make the terminology used in here clear:
+	// CNAME abc -> 123
+	// CNAME 123 -> 456
+	// CNAME 456 -> 789
+	// parent_domain: abc
+	// child_domains: [123, 456, 789]
 
-	// Get client ID from original query
+	// parent_domain = Domain at the top of the CNAME path
+	// This is the domain which was queried first in this chain
+	const int parent_domainID = query->domainID;
+
+	// child_domain = Intermediate domain in CNAME path
+	// This is the domain which was queried later in this chain
+	char *child_domain = strdup(domain);
+	// Convert to lowercase for matching
+	strtolower(child_domain);
+	const int child_domainID = findDomainID(child_domain, false);
+
+	// Get client ID from the original query (the entire chain always
+	// belongs to the same client)
 	const int clientID = query->clientID;
 
-	// Perform per-client blocking evaluation for this domain. The result for this
-	// domain-client combination will be cached to be immediately available for later
-	// queries of the same domain by the same client
+	// Check per-client blocking for the child domain
 	const char *blockingreason = NULL;
-	bool block = FTL_check_blocking(queryID, domainID, clientID, &blockingreason);
+	const bool block = FTL_check_blocking(queryID, child_domainID, clientID, &blockingreason);
 
 	// If we find during a CNAME inspection that we want to block the entire chain,
-	// the originally queried domain itself was not counted as blocked (but as
-	// (permitted). Later in the chain, when we find that this is a bad guy, we
-	// short-circuit it. We need to correct the domain counter of the domain at the
-	// head of the chain, otherwise, the data for the top lists is misleading.
-	// For this, we go back the entire path and change the original request to blocked
-	// by increasing the blocked count of this domain by one. Fortunately, each CNAME
-	// path can easily be tracked back to the original head in FTL's data so we do not
-	// need to search it. This makes the change able to happen without causing any delay.
+	// the originally queried domain itself was not counted as blocked. We have to
+	// correct this when we are going to short-circuit the entire query
 	if(block)
 	{
-		domainsData* head_domain = getDomain(query->domainID, true);
-		head_domain->blockedcount++;
+		// Increase blocked count of parent domain
+		domainsData* parent_domain = getDomain(parent_domainID, true);
+		parent_domain->blockedcount++;
 
 		// Store query response as CNAME type
 		struct timeval response;
@@ -375,29 +379,37 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 		save_reply_type(F_CNAME, NULL, query, response);
 
 		// Store domain that was the reason for blocking the entire chain
-		query->CNAME_domainID = domainID;
+		query->CNAME_domainID = child_domainID;
 
 		// Change blocking reason into CNAME-caused blocking
 		if(query->status == QUERY_GRAVITY)
+		{
 			query->status = QUERY_GRAVITY_CNAME;
+		}
 		else if(query->status == QUERY_REGEX)
 		{
 			// Get parent and child DNS cache entries
-			unsigned int parent_cacheID = findCacheID(domainID, query->clientID, query->type);
-			unsigned int child_cacheID = findCacheID(query->domainID, query->clientID, query->type);
+			const int parent_cacheID = findCacheID(parent_domainID, clientID, query->type);
+			const int child_cacheID = findCacheID(child_domainID, clientID, query->type);
 
 			// Get cache pointers
-			DNSCacheData *parent_dns_cache = getDNSCache(parent_cacheID, true);
-			DNSCacheData *child_dns_cache = getDNSCache(child_cacheID, true);
+			DNSCacheData *parent_cache = getDNSCache(parent_cacheID, true);
+			DNSCacheData *child_cache = getDNSCache(child_cacheID, true);
 
 			// Propagate ID of responsible regex up from the child to the parent domain
-			if(parent_dns_cache != NULL && child_dns_cache != NULL)
-				child_dns_cache->black_regex_idx = parent_dns_cache->black_regex_idx;
+			if(parent_cache != NULL && child_cache != NULL)
+			{
+				child_cache->black_regex_idx = parent_cache->black_regex_idx;
+			}
 
+			// Set status
 			query->status = QUERY_REGEX_CNAME;
 		}
 		else if(query->status == QUERY_BLACKLIST)
+		{
+			// Only set status
 			query->status = QUERY_BLACKLIST_CNAME;
+		}
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
@@ -410,7 +422,7 @@ bool _FTL_CNAME(const char *domain, const struct crec *cpp, const int id, const 
 	}
 
 	// Return result
-	free(domainString);
+	free(child_domain);
 	unlock_shm();
 	return block;
 }
@@ -423,10 +435,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 {
 	// Create new query in data structure
 
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return false;
-
 	// Get timestamp
 	const time_t querytimestamp = time(NULL);
 
@@ -435,7 +443,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	gettimeofday(&request, 0);
 
 	// Determine query type
-	enum query_type querytype;
+	enum query_types querytype;
 	switch(qtype)
 	{
 		case T_A:
@@ -711,10 +719,6 @@ void _FTL_forwarded(const unsigned int flags, const char *name, const union all_
 {
 	// Save that this query got forwarded to an upstream server
 
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -829,7 +833,6 @@ void FTL_dnsmasq_reload(void)
 {
 	// This function is called by the dnsmasq code on receive of SIGHUP
 	// *before* clearing the cache and rereading the lists
-	// This is the only hook that is not skipped in PRIVACY_NOSTATS mode
 
 	logg("Reloading DNS cache");
 
@@ -863,10 +866,6 @@ void FTL_dnsmasq_reload(void)
 void _FTL_reply(const unsigned short flags, const char *name, const union all_addr *addr, const int id,
                 const char* file, const int line)
 {
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -987,9 +986,9 @@ void _FTL_reply(const unsigned short flags, const char *name, const union all_ad
 	{
 		// Only proceed if query is not already known
 		// to have been blocked by Quad9
-		if(query->reply != QUERY_EXTERNAL_BLOCKED_IP &&
-		   query->reply != QUERY_EXTERNAL_BLOCKED_NULL &&
-		   query->reply != QUERY_EXTERNAL_BLOCKED_NXRA)
+		if(query->status != QUERY_EXTERNAL_BLOCKED_IP &&
+		   query->status != QUERY_EXTERNAL_BLOCKED_NULL &&
+		   query->status != QUERY_EXTERNAL_BLOCKED_NXRA)
 		{
 			// Save reply type and update individual reply counters
 			save_reply_type(flags, addr, query, response);
@@ -1148,7 +1147,7 @@ static void detect_blocked_IP(const unsigned short flags, const union all_addr *
 	}
 }
 
-static void query_externally_blocked(const int queryID, const unsigned char status)
+static void query_externally_blocked(const int queryID, const enum query_status status)
 {
 	// Get query pointer
 	queriesData* query = getQuery(queryID, true);
@@ -1190,10 +1189,6 @@ void _FTL_cache(const unsigned int flags, const char *name, const union all_addr
                 const char *arg, const int id, const char* file, const int line)
 {
 	// Save that this query got answered from cache
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// If domain is "pi.hole", we skip this query
 	// We compare case-insensitive here
@@ -1358,10 +1353,6 @@ void _FTL_dnssec(const int status, const int id, const char* file, const int lin
 {
 	// Process DNSSEC result for a domain
 
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -1411,10 +1402,6 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 	// Process upstream errors
 	// Queries with error are those where the RCODE
 	// in the DNS header is neither NOERROR nor NXDOMAIN.
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// Lock shared memory
 	lock_shm();
@@ -1487,10 +1474,6 @@ void _FTL_upstream_error(const unsigned int rcode, const int id, const char* fil
 void _FTL_header_analysis(const unsigned char header4, const unsigned int rcode, const int id, const char* file, const int line)
 {
 	// Analyze DNS header bits
-
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
 
 	// Check if RA bit is unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
@@ -1751,10 +1734,6 @@ void _FTL_forwarding_failed(const struct server *server, const char* file, const
 {
 	// Forwarding to upstream server failed
 
-	// Don't analyze anything if in PRIVACY_NOSTATS mode
-	if(config.privacylevel >= PRIVACY_NOSTATS)
-		return;
-
 	// Lock shared memory
 	lock_shm();
 
@@ -1840,8 +1819,16 @@ static void prepare_blocking_metadata(void)
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
+volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(atomic_flag_test_and_set(&worker_already_terminating))
+	{
+		logg("TCP worker already terminating!");
+		return;
+	}
+
+	// Possible debug logging
 	if(config.debug != 0)
 	{
 		const char *reason = finished ? "client disconnected" : "timeout";
@@ -1865,12 +1852,41 @@ void FTL_TCP_worker_terminating(bool finished)
 // fork() can lead to all kinds of locking problems as SQLite3 was not
 // intended to work under such circumstances. Doing so may easily lead
 // to ending up with a corrupted database.
-void FTL_TCP_worker_created(void)
+void FTL_TCP_worker_created(const int confd, const char *iface_name)
 {
+	// Print this if any debug setting is enabled
 	if(config.debug != 0)
 	{
-		// Print this if any debug setting is enabled
-		logg("TCP worker forked");
+		// Get peer IP address (client)
+		char peer_ip[ADDRSTRLEN] = { 0 };
+		union mysockaddr peer_sockaddr = {{ 0 }};
+		socklen_t peer_len = sizeof(union mysockaddr);
+		if (getpeername(confd, (struct sockaddr *)&peer_sockaddr, &peer_len) != -1)
+		{
+			union all_addr peer_addr = {{ 0 }};
+			if (peer_sockaddr.sa.sa_family == AF_INET6)
+				peer_addr.addr6 = peer_sockaddr.in6.sin6_addr;
+			else
+				peer_addr.addr4 = peer_sockaddr.in.sin_addr;
+			inet_ntop(peer_sockaddr.sa.sa_family, &peer_addr, peer_ip, ADDRSTRLEN);
+		}
+
+		// Get local IP address (interface)
+		char local_ip[ADDRSTRLEN] = { 0 };
+		union mysockaddr iface_sockaddr = {{ 0 }};
+		socklen_t iface_len = sizeof(union mysockaddr);
+		if(getsockname(confd, (struct sockaddr *)&iface_sockaddr, &iface_len) != -1)
+		{
+			union all_addr iface_addr = {{ 0 }};
+			if (iface_sockaddr.sa.sa_family == AF_INET6)
+				iface_addr.addr6 = iface_sockaddr.in6.sin6_addr;
+			else
+				iface_addr.addr4 = iface_sockaddr.in.sin_addr;
+			inet_ntop(iface_sockaddr.sa.sa_family, &iface_addr, local_ip, ADDRSTRLEN);
+		}
+
+		// Print log
+		logg("TCP worker forked for client %s on interface %s (%s)", peer_ip, iface_name, local_ip);
 	}
 
 	if(main_pid() == getpid())

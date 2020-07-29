@@ -79,7 +79,7 @@ static bool compile_regex(const char *regexin, const enum regex_type regexid)
 			if(sscanf(part, "querytype=%16s", extra))
 			{
 				// Test input string against all implemented query types
-				for(enum query_type type = TYPE_A; type < TYPE_MAX; type++)
+				for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 				{
 					// Check for querytype
 					if(strcasecmp(extra, querytypes[type]) == 0)
@@ -360,7 +360,7 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID)
 static void read_regex_table(const enum regex_type regexid)
 {
 	// Get table ID
-	unsigned char tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
+	const enum gravity_tables tableID = (regexid == REGEX_BLACKLIST) ? REGEX_BLACKLIST_TABLE : REGEX_WHITELIST_TABLE;
 
 	// Get number of lines in the regex table
 	counters->num_regex[regexid] = 0;
@@ -463,9 +463,9 @@ void read_regex_from_database(void)
 	}
 
 	// Print message to FTL's log after reloading regex filters
-	logg("Compiled %i whitelist and %i blacklist regex filters in %.1f msec",
+	logg("Compiled %i whitelist and %i blacklist regex filters for %i clients in %.1f msec",
 	     counters->num_regex[REGEX_WHITELIST], counters->num_regex[REGEX_BLACKLIST],
-	     timer_elapsed_msec(REGEX_TIMER));
+	     counters->clients, timer_elapsed_msec(REGEX_TIMER));
 }
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin)

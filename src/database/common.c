@@ -361,6 +361,24 @@ void db_init(void)
 		dbversion = db_get_FTL_property(DB_VERSION);
 	}
 
+	// Update to version 7 if lower
+	if(dbversion < 7)
+	{
+		// Update to version 7: Create message table
+		logg("Updating long-term database to version 7");
+		if(dbquery("ALTER TABLE queries ADD COLUMN additional_info TEXT;") != SQLITE_OK ||
+		   !db_set_FTL_property(DB_VERSION, 7))
+		{
+			logg("Column additional_info not initialized, database not available");
+			dbclose();
+
+			database = false;
+			return;
+		}
+		// Get updated version
+		dbversion = db_get_FTL_property(DB_VERSION);
+	}
+
 	// Close database to prevent having it opened all time
 	// We already closed the database when we returned earlier
 	dbclose();
@@ -377,7 +395,7 @@ void db_init(void)
 	logg("Database successfully initialized");
 }
 
-int db_get_FTL_property(const unsigned int ID)
+int db_get_FTL_property(const enum ftl_table_props ID)
 {
 	if(!database || FTL_db == NULL)
 	{
@@ -400,7 +418,7 @@ int db_get_FTL_property(const unsigned int ID)
 	return value;
 }
 
-bool db_set_FTL_property(const unsigned int ID, const int value)
+bool db_set_FTL_property(const enum ftl_table_props ID, const int value)
 {
 	if(!database || FTL_db == NULL)
 	{
@@ -410,7 +428,7 @@ bool db_set_FTL_property(const unsigned int ID, const int value)
 	return dbquery("INSERT OR REPLACE INTO ftl (id, value) VALUES ( %u, %i );", ID, value) == SQLITE_OK;
 }
 
-bool db_set_counter(const unsigned int ID, const int value)
+bool db_set_counter(const enum counters_table_props ID, const int value)
 {
 	if(!database || FTL_db == NULL)
 	{

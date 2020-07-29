@@ -15,7 +15,7 @@
 
 struct timespec t0[NUMTIMERS];
 
-void timer_start(const int i)
+void timer_start(enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
@@ -41,7 +41,7 @@ static struct timespec diff(struct timespec start, struct timespec end)
 	return diff;
 }
 
-double timer_elapsed_msec(const int i)
+double timer_elapsed_msec(enum timers i)
 {
 	if(i >= NUMTIMERS)
 	{
@@ -54,7 +54,7 @@ double timer_elapsed_msec(const int i)
 	return td.tv_sec * 1e3 + td.tv_nsec * 1e-6;
 }
 
-unsigned long timer_elapsed_usec(const int i)
+unsigned long timer_elapsed_usec(enum timers i)
 {
 	struct timespec t1, td;
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
@@ -62,7 +62,7 @@ unsigned long timer_elapsed_usec(const int i)
 	return td.tv_sec * 1000000L + td.tv_nsec / 1000;
 }
 
-unsigned long long timer_elapsed_nsec(const int i)
+unsigned long long timer_elapsed_nsec(enum timers i)
 {
 	struct timespec t1, td;
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);

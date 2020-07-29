@@ -31,11 +31,11 @@ typedef struct regex_data {
 	bool available;
 	bool inverted;
 	bool query_type_inverted;
-	enum query_type query_type;
+	enum query_types query_type;
 } regex_data;
 
 struct query_details {
-	enum query_type query_type;
+	enum query_types query_type;
 };
 
 int match_regex(const char *input, const DNSCacheData* dns_cache, const int clientID,
@@ -44,6 +44,5 @@ void allocate_regex_client_enabled(clientsData *client, const int clientID);
 void read_regex_from_database(void);
 
 int regex_test(const bool debug_mode, const bool quiet, const char *domainin, const char *regexin);
-
 
 #endif //REGEX_H

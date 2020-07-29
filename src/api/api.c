@@ -8,25 +8,26 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
-#include "FTL.h"
-#include "memory.h"
-#include "shmem.h"
-#include "datastructure.h"
-#include "setupVars.h"
+#include "../FTL.h"
+#include "../enums.h"
+#include "../memory.h"
+#include "../shmem.h"
+#include "../datastructure.h"
+#include "../setupVars.h"
 #include "socket.h"
-#include "files.h"
-#include "log.h"
+#include "../files.h"
+#include "../log.h"
 #include "request.h"
-#include "config.h"
-#include "database/common.h"
-#include "database/query-table.h"
+#include "../config.h"
+#include "../database/common.h"
+#include "../database/query-table.h"
 // in_auditlist()
-#include "database/gravity-db.h"
-#include "overTime.h"
+#include "../database/gravity-db.h"
+#include "../overTime.h"
 #include "api.h"
-#include "version.h"
+#include "../version.h"
 // enum REGEX
-#include "regex_r.h"
+#include "../regex_r.h"
 
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
@@ -569,7 +570,7 @@ void getUpstreamDestinations(const char *client_message, const int *sock)
 void getQueryTypes(const int *sock)
 {
 	int total = 0;
-	for(enum query_type type = TYPE_A; type < TYPE_MAX; type++)
+	for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 	{
 		total += counters->querytype[type - 1];
 	}
@@ -579,7 +580,7 @@ void getQueryTypes(const int *sock)
 	// Prevent floating point exceptions by checking if the divisor is != 0
 	if(total > 0)
 	{
-		for(enum query_type type = TYPE_A; type < TYPE_MAX; type++)
+		for(enum query_types type = TYPE_A; type < TYPE_MAX; type++)
 		{
 			percentage[type] = 1e2f*counters->querytype[type - 1]/total;
 		}
