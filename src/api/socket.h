@@ -10,10 +10,19 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
+#ifdef __FreeBSD__
+#include <sys/cdefs.h>
+#else
+#ifndef __printflike
+#define __printflike(fmtarg, firstvararg) \
+	__attribute__ ((format (gnu_printf, 2, 3)))
+#endif
+#endif
+
 void close_telnet_socket(void);
 void close_unix_socket(bool unlink_file);
 void seom(const int sock);
-void ssend(const int sock, const char *format, ...) __attribute__ ((format (gnu_printf, 2, 3)));
+void ssend(const int sock, const char *format, ...) __printflike(2, 3);
 void swrite(const int sock, const void* value, const size_t size);
 void *telnet_listening_thread_IPv4(void *args);
 void *telnet_listening_thread_IPv6(void *args);

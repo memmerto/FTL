@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Pi-hole: A black hole for Internet advertisements
 # (c) 2020 Pi-hole, LLC (https://pi-hole.net)
 # Network-wide ad blocking via your own hardware.
@@ -13,7 +13,7 @@
 set -e
 
 # Prepare build environment
-if [[ "${1}" == "clean" ]]; then
+if [ "${1}" = "clean" ]; then
     rm -rf cmake/
     exit 0
 fi
@@ -23,12 +23,18 @@ mkdir -p cmake
 cd cmake
 cmake ..
 
+case $(uname) in
+FreeBSD) NCPU=$(sysctl -n hw.ncpu);;
+Linux) NCPU=$(nproc);;
+*) NCPU=1;;
+esac
+
 # Build the sources
-cmake --build . -- -j $(nproc)
+cmake --build . -- -j $NCPU
 
 # If we are asked to install, we do this here
 # Otherwise, we simply copy the binary one level up
-if [[ "${1}" == "install" ]]; then
+if [ "${1}" = "install" ]; then
     sudo make install
 else
     cp pihole-FTL ../

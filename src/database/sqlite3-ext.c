@@ -11,11 +11,17 @@
 #include "database/sqlite3.h"
 #include "database/sqlite3-ext.h"
 
-// inet_pton
+#ifdef __FreeBSD__
+// AF_INET6
+#include <sys/socket.h>
+// struct in6_addr
+#include <netinet/in.h>
+#endif
+// inet_pton()
 #include <arpa/inet.h>
 // sscanf()
 #include <stdio.h>
-// type bool
+// bool
 #include <stdbool.h>
 // strstr()
 #include <string.h>

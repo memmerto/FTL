@@ -195,7 +195,7 @@ void seom(const int sock)
 		pack_eom(sock);
 }
 
-void __attribute__ ((format (gnu_printf, 2, 3))) ssend(const int sock, const char *format, ...)
+void __printflike(2, 3) ssend(const int sock, const char *format, ...)
 {
 	char *buffer;
 	va_list args;
@@ -297,7 +297,7 @@ static void *telnet_connection_handler_thread(void *socket_desc)
 	// Set thread name
 	char threadname[16];
 	sprintf(threadname,"telnet-%i",sock);
-	prctl(PR_SET_NAME,threadname,0,0,0);
+	set_thread_name(threadname, 0, 0, 0);
 	//Receive from client
 	ssize_t n;
 	while((n = recv(sock,client_message,SOCKETBUFFERLEN-1, 0)))
@@ -348,7 +348,7 @@ static void *socket_connection_handler_thread(void *socket_desc)
 	// Set thread name
 	char threadname[16];
 	sprintf(threadname,"socket-%i",sock);
-	prctl(PR_SET_NAME,threadname,0,0,0);
+	set_thread_name(threadname, 0, 0, 0);
 
 	// Receive from client
 	ssize_t n;
@@ -396,8 +396,7 @@ void *telnet_listening_thread_IPv4(void *args)
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	// Set thread name
-	prctl(PR_SET_NAME,"telnet-IPv4",0,0,0);
+	set_thread_name("telnet-IPv4", 0, 0, 0);
 
 	// Initialize IPv4 telnet socket
 	ipv4telnet = bind_to_telnet_port_IPv4(&telnetfd4);
@@ -442,8 +441,7 @@ void *telnet_listening_thread_IPv6(void *args)
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	// Set thread name
-	prctl(PR_SET_NAME,"telnet-IPv6",0,0,0);
+	set_thread_name("telnet-IPv6", 0, 0, 0);
 
 	// Initialize IPv6 telnet socket but only if IPv6 interfaces are available
 	if(!ipv6_available())
@@ -491,8 +489,7 @@ void *socket_listening_thread(void *args)
 	// the system without the need for another thread to join with the terminated thread
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	// Set thread name
-	prctl(PR_SET_NAME,"socket listener",0,0,0);
+	set_thread_name("socket listener", 0, 0, 0);
 
 	// Return early to avoid CPU spinning if Unix socket is not available
 	sock_avail = bind_to_unix_socket(&socketfd);

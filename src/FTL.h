@@ -32,7 +32,15 @@
 #include <netdb.h>
 #include <errno.h>
 #include <pthread.h>
+#ifdef __FreeBSD__
+// setproctitle()
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+#ifdef __linux__
+// prctl()
 #include <sys/prctl.h>
+#endif
 //#include <math.h>
 #include <pwd.h>
 // syslog
@@ -120,5 +128,19 @@ extern pthread_t socket_listenthread;
 extern pthread_t DBthread;
 extern pthread_t GCthread;
 extern pthread_t DNSclientthread;
+
+#if defined(__FreeBSD__)
+#include <sys/thr.h>
+static inline void
+set_thread_name(const char *name,
+    int x __unused, int y __unused, int z __unused)
+{
+	long tid;
+	if (thr_self(&tid) == 0)
+		(void)thr_set_name(tid, name);
+}
+#elif defined(__linux__)
+#define set_thread_name(name, x, y, z) prctl(PR_SET_NAME, name, x, y, z)
+#endif
 
 #endif // FTL_H

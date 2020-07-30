@@ -41,8 +41,12 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,defs: Detect and reject underlinking (phenomenon caused by missing shared library arguments when invoking the linked editor to produce another shared library)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
-set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro")
-set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+set(HARDENING_FLAGS "-Wp,-D_FORTIFY_SOURCE=2 -fexceptions -funwind-tables -fasynchronous-unwind-tables")
+set(DEBUG_FLAGS "-fno-omit-frame-pointer")
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fstack-protector-strong -Wl,-z,relro,-z,now -Wl,-z,defs -Wl,-z,now -Wl,-z,relro")
+    set(DEBUG_FLAGS "${DEBUG_FLAGS} -rdynamic")
+endif()
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
 # -Wextra: This enables some extra warning flags that are not enabled by -Wall.
@@ -66,12 +70,11 @@ set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
 # -Wbad-function-cast: Warn when a function call is cast to a non-matching type
 # -Wwrite-strings: When compiling C, give string constants the type "const char[length]" so that copying the address of one into a non-"const" "char *" pointer produces a warning
 # -Wparentheses: Warn if parentheses are omitted in certain contexts, such as when there is an assignment in a context where a truth value is expected, or when operators are nested whose precedence people often get confused about
-# -Wlogical-op: Warn about suspicious uses of logical operators in expressions
 # -Wstrict-prototypes: Warn if a function is declared or defined without specifying the argument types
 # -Wmissing-prototypes: Warn if a global function is defined without a previous prototype declaration
 # -Wredundant-decls: Warn if anything is declared more than once in the same scope
 # -Winline: Warn if a function that is declared as inline cannot be inlined
-if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 8)
+if((CMAKE_C_COMPILER_ID STREQUAL "GNU") AND (CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 8))
     # -Wduplicated-cond: Warn about duplicated conditions in an if-else-if chain
     # -Wduplicated-branches: Warn when an if-else has identical branches
     # -Wcast-align=strict: Warn whenever a pointer is cast such that the required alignment of the target is increased. For example, warn if a "char *" is cast to an "int *" regardless of the target machine.
@@ -80,7 +83,10 @@ if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_
 else()
     set(EXTRAWARN_GCC8 "")
 endif()
-set(EXTRAWARN "-Werror -Waddress -Wlogical-op -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow -Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wlogical-op -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline ${EXTRAWARN_GCC8}")
+set(EXTRAWARN "-Werror -Waddress -Wmissing-field-initializers -Woverlength-strings -Wformat -Wformat-nonliteral -Wuninitialized -Wswitch-enum -Wshadow -Wfloat-equal -Wbad-function-cast -Wwrite-strings -Wparentheses -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Winline ${EXTRAWARN_GCC8}")
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(EXTRAWARN "${EXTRAWARN} -Wlogical-op")
+endif()
 separate_arguments(EXTRAWARN)
 
 # Do we want to compile a statically linked musl executable?
@@ -89,7 +95,10 @@ if(STATIC STREQUAL "true")
     SET(BUILD_SHARED_LIBS OFF)
 else()
     # -pie -fPIE: (Dynamic) position independent executable
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+    if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+	set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie")
+    endif()
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fPIE")
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
@@ -176,6 +185,10 @@ find_library(HOGWEED libhogweed${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(GMP libgmp${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(NETTLE libnettle${CMAKE_STATIC_LIBRARY_SUFFIX})
 find_library(IDN libidn${CMAKE_STATIC_LIBRARY_SUFFIX})
+
+if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    include_directories(SYSTEM "/usr/local/include")
+endif()
 
 # for FTL we need the pthread library
 # for dnsmasq we need the nettle crypto library and the gmp maths library
