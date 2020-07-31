@@ -10,6 +10,8 @@
 #ifndef CAPABILITIES_H
 #define CAPABILITIES_H
 
+#include <stdbool.h>
+
 bool check_capabilities(void);
 
 #endif //CAPABILITIES_H

@@ -10,13 +10,30 @@
 #ifndef DAEMON_H
 #define DAEMON_H
 
+#include "prelude.h"
+
 void go_daemon(void);
 void savepid(void);
 char * getUserName(void);
 void removepid(void);
 void delay_startup(void);
-bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
+bool is_fork(const pid_t mpid, const pid_t pid) __pure2;
 
+#ifdef __FreeBSD__
+
+#include <sys/thr.h>
+static inline pid_t
+FTL_gettid(void)
+{
+	long tid = -1;
+
+	if (thr_self(&tid) == -1)
+		return -1;
+
+	return (pid_t)tid;
+}
+
+#else
 
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -30,7 +47,19 @@ bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 #if !defined(SYS_gettid) && defined(__NR_gettid)
 #define SYS_gettid __NR_gettid
 #endif // !SYS_gettid && __NR_gettid
-pid_t FTL_gettid(void);
+static inline pid_t
+FTL_gettid(void)
+{
+#if defined(SYS_gettid)
+	return (pid_t)syscall(SYS_gettid);
+#else
+#warning SYS_gettid or thr_self is not available on this system
+	return -1;
+#endif // SYS_gettid
+}
+
+#endif /* __FreeBSD__ */
+
 #define gettid FTL_gettid
 
 #endif //DAEMON_H

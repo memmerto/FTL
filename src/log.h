@@ -10,20 +10,10 @@
 #ifndef LOG_H
 #define LOG_H
 
-#ifdef __FreeBSD__
-#include <sys/cdefs.h>
-#else
-#ifndef __printflike
-#define __printflike(fmtarg, firstvararg) \
-	__attribute__ ((format (gnu_printf, fmtarg, firstvararg)))
-#endif
-#ifndef __malloc_like
-#define __malloc_like __attribute__((__malloc__))
-#endif
-#endif
-
 #include <stdbool.h>
 #include <time.h>
+
+#include "prelude.h"
 
 void open_FTL_log(const bool test);
 void logg(const char* format, ...) __printflike(1, 2);

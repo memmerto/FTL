@@ -143,23 +143,7 @@ void delay_startup(void)
 }
 
 // Is this a fork?
-bool __attribute__ ((const)) is_fork(const pid_t mpid, const pid_t pid)
+bool __pure2 is_fork(const pid_t mpid, const pid_t pid)
 {
 	return mpid > -1 && mpid != pid;
-}
-
-#ifdef __FreeBSD__
-#include <sys/thr.h>
-#endif
-
-pid_t FTL_gettid(void)
-{
-#if defined(SYS_gettid)
-	return (pid_t)syscall(SYS_gettid);
-#elif defined(thr_self)
-	return (pid_t)thr_self();
-#else
-#warning SYS_gettid or thr_self is not available on this system
-	return -1;
-#endif // SYS_gettid
 }

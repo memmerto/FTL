@@ -24,7 +24,7 @@
 #include "daemon.h"
 
 #ifdef __FreeBSD__
-#include <pthread.h>
+#include <pthread_np.h>
 #endif
 
 #define BINARY_NAME "pihole-FTL"
@@ -36,10 +36,11 @@ extern volatile int exit_code;
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience
-static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
+static char * __attribute__ ((nonnull (1)))
+getthread_name(char *buffer, size_t buflen)
 {
 #if defined(__FreeBSD__)
-	pthread_get_name_np(pthread_self(), buffer, sizeof buffer);
+	pthread_get_name_np(pthread_self(), buffer, buflen);
 #elif defined(__linux__)
 	prctl(PR_GET_NAME, buffer, 0, 0, 0);
 #else
@@ -107,7 +108,7 @@ static void __attribute__((noreturn)) SIGSEGV_handler(int sig, siginfo_t *si, vo
 	logg("Process details: MID: %i",mpid);
 	logg("                 PID: %i", getpid());
 	logg("                 TID: %i", gettid());
-	logg("                 Name: %s", getthread_name(namebuf));
+	logg("                 Name: %s", getthread_name(namebuf, sizeof namebuf));
 
 	logg("Received signal: %s", strsignal(sig));
 	logg("     at address: %p", si->si_addr);

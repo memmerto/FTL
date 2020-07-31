@@ -427,8 +427,7 @@ void resolveForwardDestinations(const bool onlynew)
 
 void *DNSclient_thread(void *val)
 {
-	// Set thread name
-	prctl(PR_SET_NAME, "DNS client", 0, 0, 0);
+	set_thread_name("DNS client");
 
 	while(!killed)
 	{

@@ -25,7 +25,7 @@
 
 void *DB_thread(void *val)
 {
-	set_thread_name("database", 0, 0, 0);
+	set_thread_name("database");
 
 	// First check if the user doesn't want to use the database.
 	// If this is the case, we terminate the database thread as

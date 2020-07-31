@@ -39,6 +39,10 @@
 // handle_realtime_signals()
 #include "signals.h"
 
+#ifndef s6_addr32
+#define s6_addr32 __u6_addr.__u6_addr32
+#endif
+
 static void print_flags(const unsigned int flags);
 static void save_reply_type(const unsigned int flags, const union all_addr *addr,
                             queriesData* query, const struct timeval response);

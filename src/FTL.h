@@ -132,15 +132,14 @@ extern pthread_t DNSclientthread;
 #if defined(__FreeBSD__)
 #include <sys/thr.h>
 static inline void
-set_thread_name(const char *name,
-    int x __unused, int y __unused, int z __unused)
+set_thread_name(const char *name)
 {
 	long tid;
 	if (thr_self(&tid) == 0)
 		(void)thr_set_name(tid, name);
 }
 #elif defined(__linux__)
-#define set_thread_name(name, x, y, z) prctl(PR_SET_NAME, name, x, y, z)
-#endif
+#define set_thread_name(name) prctl(PR_SET_NAME, name, 0, 0, 0)
+#endif /* __FreeBSD__ */
 
 #endif // FTL_H

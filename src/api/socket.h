@@ -10,14 +10,7 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
-#ifdef __FreeBSD__
-#include <sys/cdefs.h>
-#else
-#ifndef __printflike
-#define __printflike(fmtarg, firstvararg) \
-	__attribute__ ((format (gnu_printf, 2, 3)))
-#endif
-#endif
+#include "prelude.h"
 
 void close_telnet_socket(void);
 void close_unix_socket(bool unlink_file);

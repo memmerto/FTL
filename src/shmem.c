@@ -518,6 +518,40 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		local_shm_counter++;
 	}
 
+#ifdef __FreeBSD__
+
+	if(munmap(sharedMemory->ptr, sharedMemory->size) == -1)
+	{
+		logg("FATAL: realloc_shm(): munmap(%p, %zu): Failed to unmap \"%s\": %s",
+		     sharedMemory->ptr, sharedMemory->size, sharedMemory->name, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	const int fd = shm_open(sharedMemory->name, O_RDWR, S_IRUSR | S_IWUSR);
+	if(fd == -1)
+	{
+		logg("FATAL: realloc_shm(): Failed to open shared memory object \"%s\": %s",
+		    sharedMemory->name, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// Create new shared memory mapping
+	void *new_ptr = mmap(sharedMemory->ptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	// Check for `mmap` error
+	if(new_ptr == MAP_FAILED)
+	{
+		logg("FATAL: realloc_shm(): Failed to map shared memory object \"%s\" (%i): %s",
+		     sharedMemory->name, fd, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// Close shared memory object file descriptor as it is no longer
+	// needed after having called mmap()
+	close(fd);
+
+#else
+
 	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
 	if(new_ptr == MAP_FAILED)
 	{
@@ -526,6 +560,8 @@ bool realloc_shm(SharedMemory *sharedMemory, const size_t size, const bool resiz
 		     strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+
+#endif /* __FreeBSD__ */
 
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = size;
