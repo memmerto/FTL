@@ -22,8 +22,8 @@ bool check_capabilities(void)
 // Definition of LINUX_CAPABILITY_VERSION_*
 #define FTLDNS
 #include "dnsmasq/dnsmasq.h"
-#include "FTL.h"
 #undef __USE_XOPEN
+#include "FTL.h"
 #include "memory.h"
 #include "config.h"
 #include "log.h"
