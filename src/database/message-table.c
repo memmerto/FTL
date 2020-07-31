@@ -70,7 +70,7 @@ bool create_message_table(void)
 bool flush_message_table(void)
 {
 	// Open database connection
-	dbopen();
+	FTL_dbopen();
 
 	// Flush message table
 	SQL_bool("DELETE FROM message;");
@@ -88,7 +88,7 @@ static bool add_message(enum message_type type, const char *message,
 	// Open database connection (if not already open)
 	if(!FTL_DB_avail())
 	{
-		if(!dbopen())
+		if(!FTL_dbopen())
 			return false;
 		opened_database = true;
 	}

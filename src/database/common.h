@@ -33,7 +33,7 @@ bool db_set_FTL_property(const enum ftl_table_props ID, const int value);
 int dbquery(const char *format, ...);
 
 bool FTL_DB_avail(void) __attribute__ ((pure));
-bool dbopen(void);
+bool FTL_dbopen(void);
 void dbclose(void);
 int db_query_int(const char*);
 long get_lastID(void);

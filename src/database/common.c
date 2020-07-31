@@ -62,7 +62,7 @@ void dbclose(void)
 		logg("Unlocking database: Success");
 }
 
-bool dbopen(void)
+bool FTL_dbopen(void)
 {
 	if(config.debug & DEBUG_LOCKS)
 		logg("Locking database");
@@ -114,7 +114,7 @@ int dbquery(const char *format, ...)
 
 	// Log generated SQL string when dbquery() is called
 	// although the database connection is not available
-	if(FTL_db == NULL && !dbopen())
+	if(FTL_db == NULL && !FTL_dbopen())
 	{
 		logg("dbquery(\"%s\") called but database is not available!", query);
 		sqlite3_free(query);
