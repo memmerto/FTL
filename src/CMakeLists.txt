@@ -152,6 +152,7 @@ set(sources
         shmem.h
         signals.c
         signals.h
+        static_assert.h
         timers.c
         timers.h
         vector.c
