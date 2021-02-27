@@ -16,7 +16,6 @@
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
-#include "memory.h"
 #include "main.h"
 #include "log.h"
 // global variable killed
@@ -27,12 +26,13 @@
 #include "shmem.h"
 // LUA dependencies
 #include "lua/ftl_lua.h"
-#include <readline/history.h>
-#include <wordexp.h>
 // run_dhcp_discover()
 #include "dhcp-discover.h"
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(void);
+
+// defined in database/shell.c
+extern int sqlite3_shell_main(int argc, char **argv);
 
 bool dnsmasq_debug = false;
 bool daemonmode = true, cli_mode = false;
@@ -41,6 +41,11 @@ const char** argv_dnsmasq = NULL;
 
 static inline bool strEndsWith(const char *input, const char *end){
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
+}
+
+static void print_FTL_version(void)
+{
+	printf("Pi-hole FTL %s %s\n", get_FTL_version(), GIT_DATE);
 }
 
 void parse_args(int argc, char* argv[])
@@ -58,10 +63,47 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "dnsmasq"))
 		consume_for_dnsmasq = true;
 
+	if(strEndsWith(argv[0], "lua"))
+		exit(run_lua_interpreter(argc, argv, false));
+
+	if(strEndsWith(argv[0], "luac"))
+		exit(run_luac(argc, argv));
+
+	if(strEndsWith(argv[0], "sqlite3"))
+	{
+		if(argc == 1) // No arguments after this one
+			print_FTL_version();
+		exit(sqlite3_shell_main(argc, argv));
+	}
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
 		bool ok = false;
+
+		// Expose internal lua interpreter
+		if(strcmp(argv[i], "lua") == 0 ||
+		   strcmp(argv[i], "--lua") == 0)
+		{
+			exit(run_lua_interpreter(argc - i, &argv[i], dnsmasq_debug));
+		}
+
+		// Expose internal lua compiler
+		if(strcmp(argv[i], "luac") == 0 ||
+		   strcmp(argv[i], "--luac") == 0)
+		{
+			exit(luac_main(argc - i, &argv[i]));
+		}
+
+		// Expose embedded SQLite3 engine
+		if(strcmp(argv[i], "sql") == 0 ||
+		   strcmp(argv[i], "sqlite3") == 0 ||
+		   strcmp(argv[i], "--sqlite3") == 0)
+		{
+			if(argc == i+1) // No arguments after this one
+				print_FTL_version();
+			exit(sqlite3_shell_main(argc - i, &argv[i]));
+		}
 
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
 		// environment (initialize shared memory, lead queries from long-term
@@ -268,6 +310,7 @@ void parse_args(int argc, char* argv[])
 			printf("\t--luac, luac        FTL's lua compiler\n");
 			printf("\tdhcp-discover       Discover DHCP servers in the local\n");
 			printf("\t                    network\n");
+			printf("\tsqlite3             FTL's SQLite3 shell\n");
 			printf("\n\nOnline help: https://github.com/pi-hole/FTL\n");
 			exit(EXIT_SUCCESS);
 		}
@@ -279,78 +322,18 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_SUCCESS);
 		}
 
-		// Expose internal lua interpreter
-		if(strcmp(argv[i], "lua") == 0 ||
-		   strcmp(argv[i], "--lua") == 0)
-		{
-			if(argc == i + 1) // No arguments after this one
-				printf("Pi-hole FTL %s\n", get_FTL_version());
-#if defined(LUA_USE_READLINE)
-			wordexp_t word;
-			wordexp(LUA_HISTORY_FILE, &word, WRDE_NOCMD);
-			const char *history_file = NULL;
-			if(word.we_wordc == 1)
-			{
-				history_file = word.we_wordv[0];
-				const int ret_r = read_history(history_file);
-				if(dnsmasq_debug)
-				{
-					printf("Reading history ... ");
-					if(ret_r == 0)
-						printf("success\n");
-					else
-						printf("error - %s: %s\n", history_file, strerror(ret_r));
-				}
-
-				// The history file may not exist, try to create an empty one in this case
-				if(ret_r == ENOENT)
-				{
-					if(dnsmasq_debug)
-					{
-						printf("Creating new history file: %s\n", history_file);
-					}
-					FILE *history = fopen(history_file, "w");
-					if(history != NULL)
-						fclose(history);
-				}
-			}
-#else
-			if(dnsmasq_debug)
-				printf("No readline available!\n");
-#endif
-			const int ret = lua_main(argc - i, &argv[i]);
-#if defined(LUA_USE_READLINE)
-			if(history_file != NULL)
-			{
-				const int ret_w = write_history(history_file);
-				if(dnsmasq_debug)
-				{
-					printf("Writing history ... ");
-					if(ret_w == 0)
-						printf("success\n");
-					else
-						printf("error - %s: %s\n", history_file, strerror(ret_w));
-				}
-
-				wordfree(&word);
-			}
-#endif
-			exit(ret);
-		}
-
-		// Expose internal lua compiler
-		if(strcmp(argv[i], "luac") == 0 ||
-		   strcmp(argv[i], "--luac") == 0)
-		{
-			if(argc == i + 1) // No arguments after this one
-				printf("Pi-hole FTL %s\n", get_FTL_version());
-			exit(luac_main(argc - i, &argv[i]));
-		}
-
 		// Complain if invalid options have been found
 		if(!ok)
 		{
-			printf("pihole-FTL: invalid option -- '%s'\nTry '%s --help' for more information\n", argv[i], argv[0]);
+			printf("pihole-FTL: invalid option -- '%s'\n", argv[i]);
+			printf("Command: '");
+			for(int j = 0; j < argc; j++)
+			{
+				printf("%s", argv[j]);
+				if(j < argc - 1)
+					printf(" ");
+			}
+			printf("'\nTry '%s --help' for more information\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}

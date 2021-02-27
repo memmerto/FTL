@@ -26,7 +26,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_OMIT_PROGRESS_CALLBACK: The progress handler callback counter must be checked in the inner loop of the bytecode engine. By omitting this interface, a single conditional is removed from the inner loop of the bytecode engine, helping SQL statements to run slightly faster.
 # SQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # SQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_MEMORYDB -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0")
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -41,10 +41,11 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,defs: Detect and reject underlinking (phenomenon caused by missing shared library arguments when invoking the linked editor to produce another shared library)
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
+# -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
 set(HARDENING_FLAGS "-Wp,-D_FORTIFY_SOURCE=2 -fexceptions -funwind-tables -fasynchronous-unwind-tables")
 set(DEBUG_FLAGS "-fno-omit-frame-pointer")
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fstack-protector-strong -Wl,-z,relro,-z,now -Wl,-z,defs -Wl,-z,now -Wl,-z,relro")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fstack-protector-strong -Wl,-z,relro,-z,now -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
     set(DEBUG_FLAGS "${DEBUG_FLAGS} -rdynamic")
 endif()
 
@@ -139,8 +140,6 @@ set(sources
         log.h
         main.c
         main.h
-        memory.c
-        memory.h
         overTime.c
         overTime.h
         regex.c
@@ -182,6 +181,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:sqlite3>
         $<TARGET_OBJECTS:lua>
         $<TARGET_OBJECTS:tre-regex>
+        $<TARGET_OBJECTS:syscalls>
         )
 if(STATIC STREQUAL "true")
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -240,3 +240,4 @@ add_subdirectory(database)
 add_subdirectory(dnsmasq)
 add_subdirectory(lua)
 add_subdirectory(tre-regex)
+add_subdirectory(syscalls)

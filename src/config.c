@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "config.h"
-#include "memory.h"
 #include "setupVars.h"
 #include "log.h"
 // nice()
@@ -424,6 +423,31 @@ void read_FTLconf(void)
 	else
 		logg("   EDNS0_ECS: Don't use ECS information");
 
+	// REFRESH_HOSTNAMES
+	// defaults to: IPV4
+	buffer = parse_FTLconf(fp, "REFRESH_HOSTNAMES");
+
+	if(buffer != NULL && strcasecmp(buffer, "ALL") == 0)
+	{
+		config.refresh_hostnames = REFRESH_ALL;
+		logg("   REFRESH_HOSTNAMES: Periodically refreshing all names");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "NONE") == 0)
+	{
+		config.refresh_hostnames = REFRESH_NONE;
+		logg("   REFRESH_HOSTNAMES: Not periodically refreshing names");
+	}
+	else if(buffer != NULL && strcasecmp(buffer, "UNKNOWN") == 0)
+	{
+		config.refresh_hostnames = REFRESH_UNKNOWN;
+		logg("   REFRESH_HOSTNAMES: Only refreshing recently active clients with unknown hostnames");
+	}
+	else
+	{
+		config.refresh_hostnames = REFRESH_IPV4_ONLY;
+		logg("   REFRESH_HOSTNAMES: Periodically refreshing IPv4 names");
+	}
+
 	// Read DEBUG_... setting from pihole-FTL.conf
 	read_debuging_settings(fp);
 
@@ -476,7 +500,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	if(fp == NULL)
 		return NULL;
 
-	char * keystr = calloc(strlen(key)+2,sizeof(char));
+	char *keystr = calloc(strlen(key)+2, sizeof(char));
 	if(keystr == NULL)
 	{
 		logg("WARN: parse_FTLconf failed: could not allocate memory for keystr");
@@ -486,10 +510,22 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 
 	// Go to beginning of file
 	fseek(fp, 0L, SEEK_SET);
+	
+	if(config.debug & DEBUG_EXTRA)
+		logg("initial: conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
 
 	errno = 0;
 	while(getline(&conflinebuffer, &size, fp) != -1)
 	{
+		if(config.debug & DEBUG_EXTRA)
+		{
+			logg("conflinebuffer = %p, keystr = %p, size = %zu", conflinebuffer, keystr, size);
+			logg("  while reading line \"%s\" looking for \"%s\"", conflinebuffer, keystr);
+		}
+		// Check if memory allocation failed
+		if(conflinebuffer == NULL)
+			break;
+
 		// Skip comment lines
 		if(conflinebuffer[0] == '#' || conflinebuffer[0] == ';')
 			continue;
@@ -502,7 +538,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 		free(keystr);
 		// Note: value is still a pointer into the conflinebuffer
 		//       its memory will get released in release_config_memory()
-		char* value = find_equals(conflinebuffer) + 1;
+		char *value = find_equals(conflinebuffer) + 1;
 		// Trim whitespace at beginning and end, this function
 		// modifies the string inplace
 		trim_whitespace(value);
@@ -512,7 +548,7 @@ static char *parse_FTLconf(FILE *fp, const char * key)
 	if(errno == ENOMEM)
 		logg("WARN: parse_FTLconf failed: could not allocate memory for getline");
 
-	// Key not found -> return NULL
+	// Key not found or memory error -> return NULL
 	free(keystr);
 
 	return NULL;
@@ -524,6 +560,7 @@ void release_config_memory(void)
 	{
 		free(conflinebuffer);
 		conflinebuffer = NULL;
+		size = 0;
 	}
 }
 
@@ -727,6 +764,10 @@ void read_debuging_settings(FILE *fp)
 	// defaults to: false
 	setDebugOption(fp, "DEBUG_HELPER", DEBUG_HELPER);
 
+	// DEBUG_EXTRA
+	// defaults to: false
+	setDebugOption(fp, "DEBUG_EXTRA", DEBUG_EXTRA);
+
 	if(config.debug)
 	{
 		logg("*****************************");
@@ -752,6 +793,7 @@ void read_debuging_settings(FILE *fp)
 		logg("* DEBUG_ALIASCLIENTS    %s *", (config.debug & DEBUG_ALIASCLIENTS)? "YES":"NO ");
 		logg("* DEBUG_EVENTS          %s *", (config.debug & DEBUG_EVENTS)? "YES":"NO ");
 		logg("* DEBUG_HELPER          %s *", (config.debug & DEBUG_HELPER)? "YES":"NO ");
+		logg("* DEBUG_EXTRA           %s *", (config.debug & DEBUG_EXTRA)? "YES":"NO ");
 		logg("*****************************");
 	}
 

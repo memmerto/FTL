@@ -24,7 +24,6 @@ bool check_capabilities(void)
 #include "dnsmasq/dnsmasq.h"
 #undef __USE_XOPEN
 #include "FTL.h"
-#include "memory.h"
 #include "config.h"
 #include "log.h"
 

@@ -15,8 +15,6 @@
 #include "signals.h"
 // logg()
 #include "log.h"
-// free()
-#include "memory.h"
 // ls_dir()
 #include "files.h"
 // gettid()
@@ -236,7 +234,7 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	// Print content of /dev/shm
 	ls_dir("/dev/shm");
 
-
+	logg("Please also include some lines from above the !!!!!!!!! header.");
 	logg("Thank you for helping us to improve our FTL engine!");
 
 	// Terminate main process if crash happened in a TCP worker
@@ -257,12 +255,18 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	exit(EXIT_FAILURE);
 }
 
-#define RTSIG_MAX 2
 static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
-{ 
+{
+	// Backup errno
+	const int _errno = errno;
+
 	// Ignore real-time signals outside of the main process (TCP forks)
 	if(mpid != getpid())
+	{
+		// Restore errno before returning
+		errno = _errno;
 		return;
+	}
 
 	int rtsig = signum - SIGRTMIN;
 	logg("Received: %s (%d -> %d)", strsignal(signum), signum, rtsig);
@@ -295,13 +299,18 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *unused)
 	else if(rtsig == 4)
 	{
 		// Re-resolve all clients and forward destinations
-		set_event(RERESOLVE_HOSTNAMES);
+		// Force refreshing hostnames according to
+		// REFRESH_HOSTNAMES config option
+		set_event(RERESOLVE_HOSTNAMES_FORCE);
 	}
 	else if(rtsig == 5)
 	{
 		// Parse neighbor cache
 		set_event(PARSE_NEIGHBOR_CACHE);
 	}
+
+	// Restore errno before returning back to previous context
+	errno = _errno;
 }
 
 // Register SIGSEGV handler
@@ -369,15 +378,15 @@ void handle_realtime_signals(void)
 	// the main process
 	mpid = getpid();
 
-	// Catch first five real-time signals
-	for(unsigned char i = 0; i < (RTSIG_MAX+1); i++)
+	// Catch all real-time signals
+	for(int signum = SIGRTMIN; signum <= SIGRTMAX; signum++)
 	{
 		struct sigaction SIGACTION;
 		memset(&SIGACTION, 0, sizeof(struct sigaction));
 		SIGACTION.sa_flags = SA_SIGINFO;
 		sigemptyset(&SIGACTION.sa_mask);
 		SIGACTION.sa_sigaction = &SIGRT_handler;
-		sigaction(SIGRTMIN + i, &SIGACTION, NULL);
+		sigaction(signum, &SIGACTION, NULL);
 	}
 }
 

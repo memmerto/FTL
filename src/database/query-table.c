@@ -25,8 +25,6 @@
 #include "../config.h"
 // getstr()
 #include "../shmem.h"
-// free()
-#include "../memory.h"
 
 static bool saving_failed_before = false;
 
@@ -134,7 +132,16 @@ void DB_save_queries(void)
 		sqlite3_bind_int(stmt, 1, query->timestamp);
 
 		// TYPE
-		sqlite3_bind_int(stmt, 2, query->type);
+		if(query->type != TYPE_OTHER)
+		{
+			// Store mapped type if query->type is not OTHER
+			sqlite3_bind_int(stmt, 2, query->type);
+		}
+		else
+		{
+			// Store query type + offset if query-> type is OTHER
+			sqlite3_bind_int(stmt, 2, query->qtype + 100);
+		}
 
 		// STATUS
 		sqlite3_bind_int(stmt, 3, query->status);
@@ -355,7 +362,9 @@ void DB_read_queries(void)
 		}
 
 		const int type = sqlite3_column_int(stmt, 2);
-		if(type < TYPE_A || type >= TYPE_MAX)
+		const bool mapped_type = type >= TYPE_A && type < TYPE_MAX;
+		const bool offset_type = type > 100 && type < (100 + UINT16_MAX);
+		if(!mapped_type && !offset_type)
 		{
 			logg("FTL_db warn: TYPE should not be %i", type);
 			continue;
@@ -434,7 +443,18 @@ void DB_read_queries(void)
 		queriesData* query = getQuery(queryIndex, false);
 		query->magic = MAGICBYTE;
 		query->timestamp = queryTimeStamp;
-		query->type = type;
+		if(type < 100)
+		{
+			// Mapped query type
+			query->type = type;
+		}
+		else
+		{
+			// Offset query type
+			query->type = TYPE_OTHER;
+			query->qtype = type - 100;
+		}
+		
 		query->status = status;
 		query->domainID = domainID;
 		query->clientID = clientID;
@@ -532,10 +552,13 @@ void DB_read_queries(void)
 				overTime[timeidx].cached++;
 				break;
 
+			case QUERY_RETRIED: // Retried query
+			case QUERY_RETRIED_DNSSEC: // fall through
+				// Nothing to be done here
+				break;
+
 			default:
-				logg("Error: Found unknown status %i in long term database!", status);
-				logg("       Timestamp: %lli", (long long)queryTimeStamp);
-				logg("       Continuing anyway...");
+				logg("Warning: Found unknown status %i in long term database!", status);
 				break;
 		}
 	}

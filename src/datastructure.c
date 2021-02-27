@@ -10,7 +10,6 @@
 
 #include "FTL.h"
 #include "datastructure.h"
-#include "memory.h"
 #include "shmem.h"
 #include "log.h"
 // enum REGEX
@@ -25,9 +24,14 @@
 #include "database/aliasclients.h"
 // piholeFTLDB_reopen()
 #include "database/common.h"
+// config struct
+#include "config.h"
+// set_event(RESOLVE_NEW_HOSTNAMES)
+#include "events.h"
 
 const char *querytypes[TYPE_MAX] = {"UNKNOWN", "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT",
-                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER"};
+                                    "NAPTR", "MX", "DS", "RRSIG", "DNSKEY", "NS", "OTHER", "SVCB",
+                                    "HTTPS"};
 
 // converts upper to lower case, and leaves other characters unchanged
 void strtolower(char *str)
@@ -119,6 +123,7 @@ int findUpstreamID(const char * upstreamString, const in_port_t port, const bool
 	// to be done separately to be non-blocking
 	upstream->new = true;
 	upstream->namepos = 0; // 0 -> string with length zero
+	set_event(RESOLVE_NEW_HOSTNAMES);
 	// This is a new upstream server
 	upstream->lastQuery = time(NULL);
 	// Store port
@@ -242,6 +247,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// to be done separately to be non-blocking
 	client->new = true;
 	client->namepos = 0;
+	set_event(RESOLVE_NEW_HOSTNAMES);
 	// No query seen so far
 	client->lastQuery = 0;
 	client->numQueriesARP = client->count;
@@ -265,6 +271,9 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	// Initialize client-specific overTime data
 	memset(client->overTime, 0, sizeof(client->overTime));
 
+	// Store client ID
+	client->id = clientID;
+
 	// Increase counter by one
 	counters->clients++;
 
@@ -277,7 +286,7 @@ int findClientID(const char *clientIP, const bool count, const bool aliasclient)
 	//         during history reading get their enabled regexs reloaded
 	//         in the initial call to FTL_reload_all_domainlists()
 	if(!startup && !aliasclient)
-		reload_per_client_regex(clientID, client);
+		reload_per_client_regex(client);
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
@@ -453,13 +462,17 @@ const char *getClientNameString(const queriesData* query)
 
 void FTL_reset_per_client_domain_data(void)
 {
+	if(config.debug & DEBUG_DATABASE)
+		logg("Resetting per-client DNS cache, size is %i", counters->dns_cache_size);
+
 	for(int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
 	{
 		// Reset all blocking yes/no fields for all domains and clients
 		// This forces a reprocessing of all available filters for any
 		// given domain and client the next time they are seen
 		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
-		dns_cache->blocking_status = UNKNOWN_BLOCKED;
+		if(dns_cache != NULL)
+			dns_cache->blocking_status = UNKNOWN_BLOCKED;
 	}
 }
 

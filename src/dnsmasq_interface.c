@@ -16,7 +16,6 @@
 #include "dnsmasq_interface.h"
 #include "shmem.h"
 #include "overTime.h"
-#include "memory.h"
 #include "database/common.h"
 #include "database/database-thread.h"
 #include "datastructure.h"
@@ -95,7 +94,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Check domains against exact blacklist
 	// Skipped when the domain is whitelisted
 	bool blockDomain = false;
-	if(in_blacklist(domain, clientID, client))
+	if(in_blacklist(domain, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -110,7 +109,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Check domains against gravity domains
 	// Skipped when the domain is whitelisted or blocked by exact blacklist
 	if(!query->whitelisted && !blockDomain &&
-	   in_gravity(domain, clientID, client))
+	   in_gravity(domain, client))
 	{
 		// We block this domain
 		blockDomain = true;
@@ -126,7 +125,7 @@ static bool check_domain_blocked(const char *domain, const int clientID,
 	// Skipped when the domain is whitelisted or blocked by exact blacklist or gravity
 	int regex_idx = 0;
 	if(!query->whitelisted && !blockDomain &&
-	   (regex_idx = match_regex(domain, dns_cache, clientID, REGEX_BLACKLIST, false)) > -1)
+	   (regex_idx = match_regex(domain, dns_cache, client->id, REGEX_BLACKLIST, false)) > -1)
 	{
 		// We block this domain
 		blockDomain = true;
@@ -285,7 +284,7 @@ static bool _FTL_check_blocking(int queryID, int domainID, int clientID, const c
 	const char *blockedDomain = domainstr;
 
 	// Check whitelist (exact + regex) for match
-	query->whitelisted = in_whitelist(domainstr, dns_cache, clientID, client);
+	query->whitelisted = in_whitelist(domainstr, dns_cache, client);
 
 	bool blockDomain = false;
 	unsigned char new_status = QUERY_UNKNOWN;
@@ -518,6 +517,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		case T_NS:
 			querytype = TYPE_NS;
 			break;
+		case 64: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_SVCB;
+			break;
+		case 65: // Scn. 2 of https://datatracker.ietf.org/doc/draft-ietf-dnsop-svcb-https/
+			querytype = TYPE_HTTPS;
+			break;
 		default:
 			querytype = TYPE_OTHER;
 			break;
@@ -555,12 +560,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// 127.0.0.1 to avoid queries originating from localhost of the
 	// *distant* machine as queries coming from the *local* machine
 	const sa_family_t family = (flags & F_IPV4) ? AF_INET : AF_INET6;
-	char clientIP[ADDRSTRLEN] = { 0 };
+	char clientIP[ADDRSTRLEN+1] = { 0 };
 	if(config.edns0_ecs && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
-		clientIP[ADDRSTRLEN-1] = '\0';
+		clientIP[ADDRSTRLEN] = '\0';
 	}
 	else
 	{
@@ -625,6 +630,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
+	query->qtype = qtype;
 	query->status = QUERY_UNKNOWN;
 	query->domainID = domainID;
 	query->clientID = clientID;
@@ -674,9 +680,33 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->lastQuery = querytimestamp;
 	client->numQueriesARP++;
 
-	// Store interface information in client data (if available)
-	if(client->ifacepos == 0u && next_iface != NULL)
-		client->ifacepos = addstr(next_iface);
+	// Preocess interface information of client (if available)
+	if(next_iface != NULL)
+	{
+		if(client->ifacepos == 0u)
+		{
+			// Store in the client data if unknown so far
+			client->ifacepos = addstr(next_iface);
+		}
+		else
+		{
+			// Check if this is still the same interface or
+			// if the client moved to another interface
+			// (may require group re-processing)
+			const char *oldiface = getstr(client->ifacepos);
+			if(strcasecmp(oldiface, next_iface) != 0)
+			{
+				if(config.debug & DEBUG_CLIENTS)
+				{
+					const char *clientName = getstr(client->namepos);
+					logg("Client %s (%s) changed interface: %s -> %s",
+					     clientIP, clientName, oldiface, next_iface);
+				}
+
+				gravityDB_reload_groups(client);
+			}
+		}
+	}
 
 	// Set client MAC address from EDNS(0) information (if available)
 	if(config.edns0_ecs && edns->mac_set)
@@ -1027,7 +1057,7 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 	}
 
 	// Check if this domain matches exactly
-	const bool isExactMatch = (name != NULL && strcasecmp(getstr(domain->domainpos), name) == 0);
+	const bool isExactMatch = strcmp_escaped(name, getstr(domain->domainpos));
 
 	if((flags & F_CONFIG) && isExactMatch && !query->complete)
 	{
@@ -1038,23 +1068,12 @@ void _FTL_reply(const unsigned int flags, const char *name, const union all_addr
 		// Get time index
 		const unsigned int timeidx = query->timeidx;
 
-		// Check whether this query was blocked
-		if(strcmp(answer, "(NXDOMAIN)") == 0 ||
-		   strcmp(answer, "0.0.0.0") == 0 ||
-		   strcmp(answer, "::") == 0)
-		{
-			// Mark query as blocked
-			clientsData* client = getClient(query->clientID, true);
-			query_blocked(query, domain, client, QUERY_REGEX);
-		}
-		else
-		{
-			// Answered from a custom (user provided) cache file
-			counters->cached++;
-			overTime[timeidx].cached++;
-
-			query->status = QUERY_CACHE;
-		}
+		// Answered from a custom (user provided) cache file or because
+		// we're the authorative DNS server (e.g. DHCP server and this
+		// is our own domain)
+		counters->cached++;
+		overTime[timeidx].cached++;
+		query->status = QUERY_CACHE;
 
 		// Save reply type and update individual reply counters
 		save_reply_type(flags, addr, query, response);
@@ -1779,7 +1798,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw)
 	// option states to run as a different user/group (e.g. "nobody")
 	if(getuid() == 0)
 	{
-		if(ent_pw != NULL)
+		// Only print this and change ownership of shmem objects when
+		// we're actually dropping root (user/group my be set to root)
+		if(ent_pw != NULL && ent_pw->pw_uid != 0)
 		{
 			logg("INFO: FTL is going to drop from root to user %s (UID %d)",
 			     ent_pw->pw_name, (int)ent_pw->pw_uid);
@@ -1960,6 +1981,56 @@ static void prepare_blocking_metadata(void)
 	clearSetupVarsArray();
 }
 
+unsigned int FTL_extract_question_flags(struct dns_header *header, const size_t qlen)
+{
+	// Create working pointer
+	unsigned char *p = (unsigned char *)(header+1);
+	uint16_t qtype, qclass;
+
+	// Go through the questions
+	for (uint16_t i = ntohs(header->qdcount); i != 0; i--)
+	{
+		// Prime dnsmasq flags
+		int flags = RCODE(header) == NXDOMAIN ? F_NXDOMAIN : 0;
+
+		// Extract name from this question
+		char name[MAXDNAME];
+		if (!extract_name(header, qlen, &p, name, 1, 4))
+			break; // bad packet, go to fallback solution
+
+		// Extract query type
+		GETSHORT(qtype, p);
+		GETSHORT(qclass, p);
+
+		// Only further analyze IN questions here (not CHAOS, etc.)
+		if (qclass != C_IN)
+			continue;
+
+		// Very simple decision: If the question is AAAA, the reply
+		// should be IPv6. We use IPv4 in all other cases
+		if(qtype == T_AAAA)
+			flags |= F_IPV6;
+		else
+			flags |= F_IPV4;
+
+		// Debug logging if enabled
+		if(config.debug & DEBUG_QUERIES)
+		{
+			char *qtype_str = querystr(NULL, qtype);
+			logg("CNAME header: Question was <IN> %s %s", qtype_str, name);
+		}
+
+		return flags;
+	}
+
+	// Fall back to IPv4 (type A) when for the unlikely event that we cannot
+	// find any questions in this header
+	if(config.debug & DEBUG_QUERIES)
+		logg("CNAME header: No valid IN question found in header");
+
+	return F_IPV4;
+}
+
 // Called when a (forked) TCP worker is terminated by receiving SIGALRM
 // We close the dedicated database connection this client had opened
 // to avoid dangling database locks
@@ -2042,8 +2113,11 @@ void FTL_TCP_worker_created(const int confd, const char *iface_name)
 			inet_ntop(iface_sockaddr.sa.sa_family, &iface_addr, local_ip, ADDRSTRLEN);
 		}
 
+		// Substitute interface name if not available
+		if(iface_name == NULL)
+			iface_name = "N/A (iface is NULL)";
 		// Print log
-		logg("TCP worker forked for client %s on interface %s (%s)", peer_ip, iface_name, local_ip);
+		logg("TCP worker forked for client %s on interface %s with IP %s", peer_ip, iface_name, local_ip);
 	}
 
 	if(main_pid() == getpid())

@@ -11,7 +11,6 @@
 #include "FTL.h"
 #include "resolve.h"
 #include "shmem.h"
-#include "memory.h"
 // struct config
 #include "config.h"
 // sleepms()
@@ -112,12 +111,39 @@ static void print_used_resolvers(const char *message)
 	}
 }
 
+// Return if we want to resolve address to names at all
+// (may be disabled due to config settings)
+bool __attribute__((pure)) resolve_names(void)
+{
+	if(!config.resolveIPv4 && !config.resolveIPv6)
+		return false;
+	return true;
+}
+
+// Return if we want to resolve this type of address to a name
+bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
+{
+	if(!config.resolveIPv4 ||
+	  (!config.resolveIPv6 && strstr(ipaddr,":") != NULL))
+		return false;
+	return true;
+}
+
 char *resolveHostname(const char *addr)
 {
 	// Get host name
 	struct hostent *he = NULL;
 	char *hostname = NULL;
-	bool IPv6 = false;
+
+	// Check if we want to resolve host names
+	if(!resolve_this_name(addr))
+	{
+		if(config.debug & DEBUG_RESOLVER)
+			logg("Configured to not resolve host name for %s", addr);
+		
+		// Return an empty host name
+		return strdup("");
+	}
 
 	if(config.debug & DEBUG_RESOLVER)
 		logg("Trying to resolve %s", addr);
@@ -133,10 +159,9 @@ char *resolveHostname(const char *addr)
 	}
 
 	// Test if we want to resolve an IPv6 address
+	bool IPv6 = false;
 	if(strstr(addr,":") != NULL)
-	{
 		IPv6 = true;
-	}
 
 	// Initialize resolver subroutines if trying to resolve for the first time
 	// res_init() reads resolv.conf to get the default domain name and name server
@@ -248,7 +273,7 @@ char *resolveHostname(const char *addr)
 		}
 		else
 		{
-			// No (he == NULL) or invalid (valid_hostname returned false) hostname found
+			// No hostname found (empty PTR)
 			hostname = strdup("");
 
 			if(config.debug & DEBUG_RESOLVER)
@@ -270,21 +295,14 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 	char* oldname = strdup(getstr(oldnamepos));
 	unlock_shm();
 
-	// Test if we want to resolve an IPv6 address
-	bool IPv6 = false;
-	if(strstr(ipaddr,":") != NULL)
-	{
-		IPv6 = true;
-	}
-
-	if( (IPv6 && !config.resolveIPv6) ||
-	   (!IPv6 && !config.resolveIPv4))
+	// Test if we want to resolve host names, otherwise all calls to resolveHostname()
+	// and getNameFromIP() can be skipped as they will all return empty names (= no records)
+	if(!resolve_this_name(ipaddr))
 	{
 		if(config.debug & DEBUG_RESOLVER)
-		{
-			logg(" ---> \"\" (configured to not resolve %s host names)",
-			     IPv6 ? "IPv6" : "IPv4");
-		}
+			logg(" ---> \"\" (configured to not resolve host name)");
+
+		// Return fixed position of empty string
 		return 0;
 	}
 
@@ -331,7 +349,7 @@ static size_t resolveAndAddHostname(size_t ippos, size_t oldnamepos)
 }
 
 // Resolve client host names
-static void resolveClients(const bool onlynew)
+static void resolveClients(const bool onlynew, const bool force_refreshing)
 {
 	const time_t now = time(NULL);
 	// Lock counter access here, we use a copy in the following loop
@@ -365,9 +383,9 @@ static void resolveClients(const bool onlynew)
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
 
-		// Only try to resolve host names of clients which were recently active
+		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
-		if(client->lastQuery < now - 2*60*60)
+		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
 		{
 			if(config.debug & DEBUG_RESOLVER)
 			{
@@ -382,9 +400,53 @@ static void resolveClients(const bool onlynew)
 
 		// If onlynew flag is set, we will only resolve new clients
 		// If not, we will try to re-resolve all known clients
-		if(onlynew && !newflag)
+		if(!force_refreshing && onlynew && !newflag)
 		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				logg("Skipping client %s (%s) because it is not new",
+				     getstr(ippos), getstr(oldnamepos));
+			}
 			skipped++;
+			continue;
+		}
+
+		// Check if we want to resolve an IPv6 address
+		bool IPv6 = false;
+		const char *ipaddr = NULL;
+		if((ipaddr = getstr(ippos)) != NULL && strstr(ipaddr,":") != NULL)
+			IPv6 = true;
+
+		// If we're in refreshing mode (onlynew == false), we skip clients if
+		// 1. We should not refresh any hostnames
+		// 2. We should only refresh IPv4 client, but this client is IPv6
+		// 3. We should only refresh unknown hostnames, but leave
+		//    existing ones as they are
+		if(onlynew == false &&
+		   (config.refresh_hostnames == REFRESH_NONE ||
+		   (config.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6) ||
+		   (config.refresh_hostnames == REFRESH_UNKNOWN && oldnamepos != 0)))
+		{
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				const char *reason = "N/A";
+				if(config.refresh_hostnames == REFRESH_NONE)
+					reason = "Not refreshing any hostnames";
+				else if(config.refresh_hostnames == REFRESH_IPV4_ONLY)
+					reason = "Only refreshing IPv4 names";
+				else if(config.refresh_hostnames == REFRESH_UNKNOWN)
+					reason = "Looking only for unknown hostnames";
+				
+				logg("Skipping client %s (%s) because it should not be refreshed: %s",
+				     getstr(ippos), getstr(oldnamepos), reason);
+			}
+			skipped++;
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				lock_shm();
+				logg("Client %s -> \"%s\" already known", getstr(ippos), getstr(oldnamepos));
+				unlock_shm();
+			}
 			continue;
 		}
 
@@ -409,6 +471,10 @@ static void resolveClients(const bool onlynew)
 		client->namepos = newnamepos;
 		// Mark entry as not new
 		client->new = false;
+
+		if(config.debug & DEBUG_RESOLVER)
+			logg("Client %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
+
 		unlock_shm();
 	}
 
@@ -466,6 +532,12 @@ static void resolveUpstreams(const bool onlynew)
 		if(onlynew && !newflag)
 		{
 			skipped++;
+			if(config.debug & DEBUG_RESOLVER)
+			{
+				lock_shm();
+				logg("Upstream %s -> \"%s\" already known", getstr(ippos), getstr(oldnamepos));
+				unlock_shm();
+			}
 			continue;
 		}
 
@@ -490,6 +562,10 @@ static void resolveUpstreams(const bool onlynew)
 		upstream->namepos = newnamepos;
 		// Mark entry as not new
 		upstream->new = false;
+
+		if(config.debug & DEBUG_RESOLVER)
+			logg("Upstream %s -> \"%s\" is new", getstr(ippos), getstr(newnamepos));
+
 		unlock_shm();
 	}
 
@@ -509,37 +585,45 @@ void *DNSclient_thread(void *val)
 
 	while(!killed)
 	{
-		// Run every minute to resolve only new clients and upstream servers
-		if(resolver_ready && (time(NULL) % RESOLVE_INTERVAL == 0))
+		// Run whenever necessary to resolve only new clients and
+		// upstream servers
+		if(resolver_ready && get_and_clear_event(RESOLVE_NEW_HOSTNAMES))
 		{
-			// Try to resolve new client host names (onlynew=true)
-			resolveClients(true);
-			// Try to resolve new upstream destination host names (onlynew=true)
+			// Try to resolve new client host names
+			// (onlynew=true)
+			// We're not forcing refreshing here
+			resolveClients(true, false);
+			// Try to resolve new upstream destination host names
+			// (onlynew=true)
 			resolveUpstreams(true);
-			// Prevent immediate re-run of this routine
-			sleepms(500);
 		}
 
 		// Run every hour to update possibly changed client host names
 		if(resolver_ready && (time(NULL) % RERESOLVE_INTERVAL == 0))
 		{
 			set_event(RERESOLVE_HOSTNAMES);      // done below
-			set_event(RERESOLVE_DATABASE_NAMES); // done in database thread
+		}
+
+		bool force_refreshing = false;
+		if(get_and_clear_event(RERESOLVE_HOSTNAMES_FORCE))
+		{
+			set_event(RERESOLVE_HOSTNAMES);      // done below
+			force_refreshing = true;
 		}
 
 		// Process resolver related event queue elements
 		if(get_and_clear_event(RERESOLVE_HOSTNAMES))
 		{
-			// Try to resolve all client host names (onlynew=false)
-			resolveClients(false);
-			// Try to resolve all upstream destination host names (onlynew=false)
+			// Try to resolve all client host names
+			// (onlynew=false)
+			resolveClients(false, force_refreshing);
+			// Try to resolve all upstream destination host names
+			// (onlynew=false)
 			resolveUpstreams(false);
-			// Prevent immediate re-run of this routine
-			sleepms(500);
 		}
 
-		// Idle for 0.1 sec before checking again the time criteria
-		sleepms(100);
+		// Idle for 1 sec before checking again the time criteria
+		sleepms(1000);
 	}
 
 	return NULL;
