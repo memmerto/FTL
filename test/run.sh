@@ -2,8 +2,16 @@
 
 BASEDIR=/tmp/pihole
 
+# Kill possibly running pihole-FTL process
+while pidof -s pihole-FTL > /dev/null; do
+  pid="$(pidof -s pihole-FTL)"
+  echo "Terminating running pihole-FTL process with PID ${pid}"
+  kill $pid
+  sleep 1
+done
+
 # Clean up possible old files from earlier test runs
-rm -f $BASEDIR/gravity.db $BASEDIR/pihole-FTL.db $BASEDIR/pihole.log $BASEDIR/pihole-FTL.log
+rm -f $BASEDIR/gravity.db $BASEDIR/pihole-FTL.db $BASEDIR/pihole.log $BASEDIR/pihole-FTL.log /dev/shm/FTL-*
 
 # Create necessary directories and files
 mkdir -p $BASEDIR

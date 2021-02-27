@@ -12,6 +12,7 @@
 
 #include "prelude.h"
 
+void saveport(int port);
 void close_telnet_socket(void);
 void close_unix_socket(bool unlink_file);
 void seom(const int sock);
