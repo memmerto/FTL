@@ -17,8 +17,17 @@ rm -f $BASEDIR/gravity.db $BASEDIR/pihole-FTL.db $BASEDIR/pihole.log $BASEDIR/pi
 mkdir -p $BASEDIR
 touch $BASEDIR/pihole-FTL.log $BASEDIR/pihole.log $BASEDIR/pihole-FTL.pid $BASEDIR/pihole-FTL.port
 
+# Copy binary into a location the new user pihole can access
+cp ./pihole-FTL $BASEDIR/
+chmod +x $BASEDIR/pihole-FTL
+# Note: We cannot add CAP_NET_RAW and CAP_NET_ADMIN at this point
+setcap CAP_NET_BIND_SERVICE+eip $BASEDIR/pihole-FTL
+
 # Prepare gravity database
-sqlite3 $BASEDIR/gravity.db < test/gravity.db.sql
+sqlite3 $BASEDIR/pihole/gravity.db < test/gravity.db.sql
+
+# Prepare pihole-FTL database
+sqlite3 $BASEDIR/pihole/pihole-FTL.db < test/pihole-FTL.db.sql
 
 # Prepare setupVars.conf
 cat >$BASEDIR/setupVars.conf <<EOF
@@ -40,11 +49,20 @@ log-queries
 log-facility=$BASEDIR/pihole.log
 EOF
 
-cp pihole-FTL $BASEDIR/
-
 # Set restrictive umask
 OLDUMASK=$(umask)
 umask 0022
+
+# Prepare LUA scripts
+mkdir -p /opt/pihole/libs
+wget -O /opt/pihole/libs/inspect.lua https://ftl.pi-hole.net/libraries/inspect.lua
+
+# Terminate running FTL instance (if any)
+if pidof pihole-FTL &> /dev/null; then
+  echo "Terminating running pihole-FTL instance"
+  killall pihole-FTL
+  sleep 2
+fi
 
 # Start FTL
 cd $BASEDIR
@@ -73,6 +91,10 @@ cat $BASEDIR/pihole-FTL.log
 # Run tests
 test/libs/bats/bin/bats "test/test_suite.bats"
 RET=$?
+
+if [[ $RET != 0 ]]; then
+  openssl s_client -quiet -connect tricorder.pi-hole.net:9998 2> /dev/null < /var/log/pihole-FTL.log
+fi
 
 # Kill pihole-FTL after having completed tests
 pkill pihole-FTL

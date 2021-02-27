@@ -62,4 +62,6 @@ FTL_gettid(void)
 
 #define gettid FTL_gettid
 
+extern bool resolver_ready;
+
 #endif //DAEMON_H
