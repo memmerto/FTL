@@ -274,6 +274,6 @@ void logg_fatal_dnsmasq_message(const char *message)
 	logg("FATAL ERROR in dnsmasq core: %s", message);
 
 	// Log to database (we have to open the database at this point)
-	dbopen();
+	FTL_dbopen();
 	add_message(DNSMASQ_CONFIG_MESSAGE, message, 0);
 }

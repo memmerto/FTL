@@ -276,8 +276,7 @@ int *get_aliasclient_list(const int aliasclientID)
 void reimport_aliasclients(void)
 {
 	// Open pihole-FTL.db database file if needed
-	const bool db_already_open = FTL_DB_avail();
-	if(!db_already_open && !dbopen())
+	if(!FTL_DB_avail())
 	{
 		logg("reimport_aliasclients() - Failed to open DB");
 		return;
@@ -299,9 +298,6 @@ void reimport_aliasclients(void)
 
 	// Import aliasclients from database table
 	import_aliasclients();
-
-	if(!db_already_open)
-		dbclose();
 
 	// Recompute all alias-clients
 	for(int clientID = 0; clientID < counters->clients; clientID++)

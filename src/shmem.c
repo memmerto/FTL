@@ -291,8 +291,13 @@ const char *getstr(const size_t pos)
 /// Create a mutex for shared memory
 static pthread_mutex_t create_mutex(void) {
 	logg("Creating mutex");
+#ifdef __FreeBSD__
+        pthread_mutexattr_t lock_attr = {0,};
+	pthread_mutex_t lock = {0,};
+#else
 	pthread_mutexattr_t lock_attr = {};
 	pthread_mutex_t lock = {};
+#endif
 
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);

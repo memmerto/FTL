@@ -23,7 +23,7 @@ fi
 #     ./build.sh "-DA=1 -DB=2" install
 mkdir -p cmake
 cd cmake
-if [[ "${1}" == "-D"* ]]; then
+if [ "${1}" = "-D"* ]; then
     cmake "${1}" ..
 else
     cmake ..
@@ -40,7 +40,7 @@ cmake --build . -- -j $NCPU
 
 # If we are asked to install, we do this here
 # Otherwise, we simply copy the binary one level up
-if [ "${1}" = "install" -o "${2} = "install" ]; then
+if [ "${1}" = "install" -o "${2}" = "install" ]; then
     sudo make install
 else
     cp pihole-FTL ../

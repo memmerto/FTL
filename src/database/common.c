@@ -110,7 +110,7 @@ bool FTL_dbopen(void)
 void piholeFTLDB_reopen(void)
 {
 	dbclose();
-	dbopen();
+	FTL_dbopen();
 }
 
 int dbquery(const char *format, ...)
@@ -267,7 +267,7 @@ void db_init(void)
 	}
 
 	// Open database
-	dbopen();
+	FTL_dbopen();
 
 	db_avail = true;
 

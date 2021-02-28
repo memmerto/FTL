@@ -65,7 +65,6 @@ extern const struct opttab_t {
 static int create_dhcp_socket(const char *interface_name)
 {
 	struct sockaddr_in dhcp_socket;
-	struct ifreq interface;
 	int flag=1;
 
 	// Set up the address we're going to bind to (we will listen on any address).
@@ -100,6 +99,23 @@ static int create_dhcp_socket(const char *interface_name)
 		return -1;
 	}
 
+#ifdef __FreeBSD__
+#if 0
+        // On FreeBSD, we don't bind the socket to an interface.  Instead, we set
+        // the IP_RECVIF flag to indicate that we want the interface details to
+        // be supplied with each packet.  This means we will need to filter at
+        // receive time (via recvmsg) in addition to calling recvfrom().
+
+	if(setsockopt(sock, IPPROTO_IP, IP_RECVIF, &index, sizeof(index)) < 0)
+	{
+		logg("Error: Could not request interface info %s (%s)\n", interface_name, strerror(errno));
+		return -1;
+	}
+#endif
+#else
+
+	struct ifreq interface;
+
 	// bind socket to interface
 	strncpy(interface.ifr_ifrn.ifrn_name, interface_name, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
@@ -107,6 +123,8 @@ static int create_dhcp_socket(const char *interface_name)
 		logg("Error: Could not bind socket to interface %s (%s)\n       ---> Check your privileges (run with sudo)!\n", interface_name, strerror(errno));
 		return -1;
 	}
+
+#endif
 
 	// bind the socket
 	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0){
@@ -120,6 +138,33 @@ static int create_dhcp_socket(const char *interface_name)
 // determines hardware address on client machine
 static int get_hardware_address(const int sock, const char *interface_name, unsigned char *mac)
 {
+#ifdef __FreeBSD__
+
+	struct ifaddrs *ifap;
+	bool found = false;
+
+	// get list of all interfaces
+	if (getifaddrs(&ifap) == 0) {
+		struct ifaddrs *p;
+		for (p = ifap; p; p = p->ifa_next) {
+			if (strcmp(p->ifa_name, interface_name) == 0) {
+				struct sockaddr_dl* sdp = (struct sockaddr_dl*) p->ifa_addr;
+				memcpy(&mac[0], sdp->sdl_data + sdp->sdl_nlen, 6);
+				found = true;
+				break;
+			}
+		}
+		freeifaddrs(ifap);
+	}
+
+	if (!found)
+	{
+		logg(" Error: Could not get hardware address of interface '%s' (socket %d, error: %s)", interface_name, sock, strerror(errno));
+		return false;
+	}
+
+#else
+
 	struct ifreq ifr;
 	strncpy((char *)&ifr.ifr_name, interface_name, sizeof(ifr.ifr_name)-1);
 
@@ -130,6 +175,9 @@ static int get_hardware_address(const int sock, const char *interface_name, unsi
 		return false;
 	}
 	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
+
+#endif
+
 #ifdef DEBUG
 	logg_sameline("Hardware address of this interface: ");
 	for (uint8_t i = 0; i < 6; ++i)
@@ -202,7 +250,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	discover_packet.options[6] = 1;      // DHCP message type code for DHCPDISCOVER
 
 	// Place end option at the end of the options
-	discover_packet.options[7] = 255;
+	discover_packet.options[7] = '\xff';
 
 	// send the DHCPDISCOVER packet to the specified address
 	struct sockaddr_in target;
@@ -410,6 +458,33 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	address_size = sizeof(struct sockaddr_in);
 	recv_result = recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)address, &address_size);
 
+#ifdef __FreeBSD__
+#if 0
+// FIXME
+// Need to do interface filtering here
+
+// Still learning, but ...
+// ... it looks like we need to use recvmsg(), not recvfrom(), to get packets with ancillary data.
+// The logic below will snarf out the interface details
+// BUT
+// where is the payload?
+
+	struct msghdr msg = (msghdr*)buffer;
+	if (msg.msg_controllen >= sizeof(struct cmsghdr)
+	{
+		for (cmptr = CMSG_FIRSTHDR(&msg); cmptr != NULL; cmptr = CMSG_NXTHDR(&msg, cmptr)) {
+			if (cmptr->cmsg_level == IPPROTO_IP && cmptr->cmsg_type == IP_RECVIF) {
+				struct sockaddr_dl *sdl;
+				sdl = (struct sockaddr_dl *) CMSG_DATA(cmptr);
+				// save sdl->sdl_index;
+				continue;
+			}
+			err_quit("unknown ancillary data, len = %d, level = %d, type = %d", cmptr->cmsg_len, cmptr->cmsg_level, cmptr->cmsg_type);
+		}
+	}
+#endif
+#endif
+
 	pthread_mutex_lock(&lock);
 	logg("* Received %d bytes from %s:%s", recv_result, iface, inet_ntoa(address->sin_addr));
 #ifdef DEBUG
@@ -532,7 +607,7 @@ static void *dhcp_discover_iface(void *args)
 	const char *iface = ((struct ifaddrs*)args)->ifa_name;
 
 	// Set interface name as thread name
-	prctl(PR_SET_NAME, iface, 0, 0, 0);
+	set_thread_name(iface);
 
 	// create socket for DHCP communications
 	const int dhcp_socket = create_dhcp_socket(iface);
@@ -593,7 +668,11 @@ int run_dhcp_discover(void)
 	pthread_attr_init(&attr);
 
 	// Create processing/logging lock
+#ifdef __FreeBSD__
+	pthread_mutexattr_t lock_attr = {0,};
+#else
 	pthread_mutexattr_t lock_attr = {};
+#endif
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);
 	// Initialize the lock
@@ -610,8 +689,13 @@ int run_dhcp_discover(void)
 	int tid = 0;
 	while(tmp != NULL && tid < MAXTHREADS)
 	{
+#ifdef __FreeBSD__
+		// Create a thread for each interface of type AF_INET or AF_INET6
+		if(tmp->ifa_addr && (tmp->ifa_addr->sa_family == AF_INET || tmp->ifa_addr->sa_family == AF_INET6))
+#else
 		// Create a thread for interfaces of type AF_PACKET
 		if(tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
+#endif
 		{
 			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
 			{

@@ -1556,7 +1556,7 @@ void updateMACVendorRecords(void)
 }
 
 // Get hardware address of device identified by IP address
-char __malloc_like getMACfromIP(const char *ipaddr)
+char* __malloc_like getMACfromIP(const char *ipaddr)
 {
 	if(!FTL_DB_avail())
 	{

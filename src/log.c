@@ -179,7 +179,7 @@ void __printflike(2, 3) _FTL_log(const bool newline, const char *format, ...)
 }
 
 // Log helper activity (may be script or lua)
-void FTL_log_helper(const unsigned char n, ...)
+void FTL_log_helper(const unsigned int n, ...)
 {
 	// Only log helper debug messages if enabled
 	if(!(config.debug & DEBUG_HELPER))

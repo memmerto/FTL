@@ -91,15 +91,20 @@ static void print_used_resolvers(const char *message)
 			family = AF_INET;
 		}
 		else
-		{
+                {
 			// Extension name servers (typically IPv6)
-
+#ifdef __FreeBSD__
+                        // FreeBSD does not implement this.
+                        // See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=172390
+			continue;
+#else
 			// Some of the entries may not be configured
 			if(_res._u._ext.nsaddrs[i - MAXNS] == NULL)
 				continue;
 			addr = &_res._u._ext.nsaddrs[i - MAXNS]->sin6_addr;
 			port = ntohs(_res._u._ext.nsaddrs[i - MAXNS]->sin6_port);
 			family = _res._u._ext.nsaddrs[i - MAXNS]->sin6_family;
+#endif
 		}
 
 		// Convert nameserver information to human-readable form

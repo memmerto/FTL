@@ -10,10 +10,12 @@
 #ifndef SYSCALLS_H
 #define SYSCALLS_H
 
+#include "../prelude.h"
+
 // Interrupt-safe memory routines
-char *FTLstrdup(const char *src, const char *file, const char *func, const int line) __attribute__((malloc));
-void *FTLcalloc(size_t n, size_t size, const char *file, const char *func, const int line) __attribute__((malloc)) __attribute__((alloc_size(1,2)));
-void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *func, const int line) __attribute__((alloc_size(2)));
+char *FTLstrdup(const char *src, const char *file, const char *func, const int line) __malloc_like;
+void *FTLcalloc(size_t n, size_t size, const char *file, const char *func, const int line) __alloc_size2(1,2);
+void *FTLrealloc(void *ptr_in, size_t size, const char *file, const char *func, const int line) __alloc_size(2);
 void FTLfree(void *ptr, const char*file, const char *func, const int line);
 int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *file, const char *func, const int line);
 
@@ -21,17 +23,17 @@ int FTLfallocate(const int fd, const off_t offset, const off_t len, const char *
 // Interrupt-safe printing routines
 // printf() is derived from fprintf(stdout, ...)
 // vprintf() is derived from vfprintf(stdout, ...)
-int FTLfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
-int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+int FTLfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, ...) __printflike(5, 6);
+int FTLvfprintf(FILE *stream, const char*file, const char *func, const int line, const char *format, va_list args) __printflike(5, 0);
 
-int FTLsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
-int FTLvsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+int FTLsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, ...) __printflike(5, 6);
+int FTLvsprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const char *format, va_list args) __printflike(5, 0);
 
-int FTLasprintf(const char *file, const char *func, const int line, char **buffer, const char *format, ...) __attribute__ ((format (gnu_printf, 5, 6)));
-int FTLvasprintf(const char *file, const char *func, const int line, char **buffer, const char *format, va_list args) __attribute__ ((format (gnu_printf, 5, 0)));
+int FTLasprintf(const char *file, const char *func, const int line, char **buffer, const char *format, ...) __printflike(5, 6);
+int FTLvasprintf(const char *file, const char *func, const int line, char **buffer, const char *format, va_list args) __printflike(5, 0);
 
-int FTLsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, ...) __attribute__ ((format (gnu_printf, 6, 7)));
-int FTLvsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args) __attribute__ ((format (gnu_printf, 6, 0)));
+int FTLsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, ...) __printflike(6, 7);
+int FTLvsnprintf(const char *file, const char *func, const int line, char *__restrict__ buffer, const size_t maxlen, const char *format, va_list args) __printflike(6, 0);
 
 // Interrupt-safe socket routines
 ssize_t FTLwrite(int fd, const void *buf, size_t total, const char *file, const char *func, const int line);

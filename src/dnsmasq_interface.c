@@ -701,7 +701,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	client->numQueriesARP++;
 
 	// Preocess interface information of client (if available)
-	if(next_iface != NULL)
+	if(next_iface[0] != '\0')
 	{
 		if(client->ifacepos == 0u)
 		{

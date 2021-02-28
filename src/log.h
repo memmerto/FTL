@@ -33,6 +33,6 @@ const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void _FTL_log(const bool newline, const char* format, ...) __printflike(2, 3);
 void FTL_log_dnsmasq_fatal(const char *format, ...) __printflike(1, 2);
 void log_ctrl(bool vlog, bool vstdout);
-void FTL_log_helper(const unsigned char n, ...);
+void FTL_log_helper(const unsigned int n, ...);
 
 #endif //LOG_H
